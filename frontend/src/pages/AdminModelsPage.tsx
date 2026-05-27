@@ -31,20 +31,26 @@ export function AdminModelsPage({
   embedded?: boolean;
 }) {
   const [drawer, setDrawer] = useState<"create" | null>(null);
+  const [filterProviderId, setFilterProviderId] = useState(preselectedProviderId || "");
   const [form, setForm] = useState<CreateModelRequest>(() =>
     preselectedProviderId ? { ...initialModel, providerId: preselectedProviderId } : initialModel
   );
 
   useEffect(() => {
     if (preselectedProviderId) {
+      setFilterProviderId(preselectedProviderId);
       setForm((prev) => ({ ...prev, providerId: preselectedProviderId }));
     }
   }, [preselectedProviderId]);
 
+  const filteredModels = filterProviderId
+    ? models.filter((m) => m.providerId === filterProviderId)
+    : models;
+
   function openCreate() {
     setForm(
-      preselectedProviderId
-        ? { ...initialModel, providerId: preselectedProviderId }
+      filterProviderId
+        ? { ...initialModel, providerId: filterProviderId }
         : initialModel
     );
     setDrawer("create");
@@ -56,26 +62,29 @@ export function AdminModelsPage({
     setForm(initialModel);
   }
 
-  const preselectedProvider = providers.find((p) => p.id === preselectedProviderId);
-
   return (
     <div className={embedded ? "embeddedPage" : "workspace"}>
       <header className="toolbar">
         {embedded ? <h3>模型列表</h3> : <h2>LLM Model</h2>}
-        <button className="iconButton" onClick={openCreate} title="新建 Model">
-          ＋
-        </button>
+        <div className="chatToolbarActions">
+          <select
+            value={filterProviderId}
+            onChange={(e) => setFilterProviderId(e.target.value)}
+          >
+            <option value="">全部 Provider</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <button className="iconButton" onClick={openCreate} title="新建 Model">
+            ＋
+          </button>
+        </div>
       </header>
 
-      {preselectedProvider && (
-        <div className="notice info">
-          当前筛选 Provider：<strong>{preselectedProvider.name}</strong> ({preselectedProvider.protocol})
-        </div>
-      )}
-
       <section className="panel">
-        {models.length === 0 ? (
-          <EmptyState title="暂无 Model" />
+        {filteredModels.length === 0 ? (
+          <EmptyState title={filterProviderId ? "该 Provider 暂无模型" : "暂无 Model"} />
         ) : (
           <DataTable>
             <thead>
@@ -90,7 +99,7 @@ export function AdminModelsPage({
               </tr>
             </thead>
             <tbody>
-              {models.map((model) => (
+              {filteredModels.map((model) => (
                 <tr
                   key={model.id}
                   className={

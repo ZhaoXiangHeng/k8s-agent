@@ -1,25 +1,59 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useChatOps } from "../application/useChatOps";
 import type { Model } from "../domain/llm";
+import type { ChatMessage, ChatResource } from "../domain/chat";
 import type { ApiAuth } from "../infrastructure/api/client";
 import { DataTable } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
 
-function ResourceTable({ resources }: { resources: NonNullable<ReturnType<typeof useChatOps>["messages"][number]["resources"]> }) {
+// ---- simple markdown to HTML (no external lib) ----
+function renderMarkdown(md: string): string {
+  let html = md
+    // escape HTML
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    // headers
+    .replace(/^### (.+)$/gm, "<h4>$1</h4>")
+    .replace(/^## (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^# (.+)$/gm, "<h2>$1</h2>")
+    // bold & italic
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    // inline code
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    // links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<a href=\"$2\" target=\"_blank\">$1</a>")
+    // unordered lists
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>")
+    // line breaks
+    .replace(/\n\n/g, "</p><p>")
+    .replace(/\n/g, "<br/>");
+
+  html = "<p>" + html + "</p>";
+  // fix nested <p> inside <li> etc — just clean up empty <p></p>
+  html = html.replace(/<p><\/p>/g, "");
+  // wrap adjacent <li> groups in <ul>
+  html = html.replace(/((?:<li>.*?<\/li>)+)/g, "<ul>$1</ul>");
+  // fix double ul
+  html = html.replace(/<\/ul><ul>/g, "");
+
+  return html;
+}
+
+// ---- resource table inside messages ----
+function ResourceTable({ resources }: { resources: ChatResource[] }) {
+  if (!resources || resources.length === 0) return null;
   return (
     <div className="messageResources">
       <DataTable>
-        <thead><tr><th>Namespace</th><th>Kind</th><th>Name</th><th>Phase</th><th>Reason</th><th>Restarts</th><th>Node</th></tr></thead>
+        <thead><tr><th>Namespace</th><th>Kind</th><th>Name</th><th>Status</th></tr></thead>
         <tbody>
-          {resources.map((resource, index) => (
-            <tr key={`${resource.namespace}-${resource.name}-${index}`}>
-              <td>{resource.namespace || "-"}</td>
-              <td>{resource.kind || "-"}</td>
-              <td>{resource.name || "-"}</td>
-              <td>{resource.phase || "-"}</td>
-              <td>{resource.reason || "-"}</td>
-              <td>{resource.restartCount ?? "-"}</td>
-              <td>{resource.node || "-"}</td>
+          {resources.map((r, i) => (
+            <tr key={`${r.namespace}-${r.name}-${i}`}>
+              <td>{r.namespace || "-"}</td>
+              <td>{r.kind || "-"}</td>
+              <td>{r.name || "-"}</td>
+              <td>{r.phase || "-"}</td>
             </tr>
           ))}
         </tbody>
@@ -28,16 +62,73 @@ function ResourceTable({ resources }: { resources: NonNullable<ReturnType<typeof
   );
 }
 
+// ---- thinking display ----
+function ThinkingBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  if (!text) return null;
+  return (
+    <div className="thinkingBlock">
+      <button className="link-btn" onClick={() => setOpen(!open)}>
+        {open ? "🔽 隐藏思考过程" : "▶ 查看思考过程"}
+      </button>
+      {open && <pre className="thinkingContent">{text}</pre>}
+    </div>
+  );
+}
+
+function ToolCallBlock({ calls }: { calls: ChatMessage["toolCalls"] }) {
+  if (!calls || calls.length === 0) return null;
+  return (
+    <div className="toolCallBlock">
+      {calls.map((tc, i) => (
+        <div key={i} className={`toolCallItem ${tc.success === false ? "toolCallFail" : ""}`}>
+          <span className="toolCallName">🔧 {tc.name}</span>
+          {tc.result && <span className="toolCallResult">{tc.success === false ? "失败" : "完成"}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- message bubble ----
+function MessageBubble({ message }: { message: ChatMessage }) {
+  return (
+    <div className={`message ${message.role}`}>
+      {message.thinking && <ThinkingBlock text={message.thinking} />}
+      {message.toolCalls && <ToolCallBlock calls={message.toolCalls} />}
+      {message.content && (
+        <div
+          className="messageContent"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+        />
+      )}
+      {message.pending && message.role === "assistant" && (
+        <span className="pending">{message.content || "分析中..."}</span>
+      )}
+      {message.resources && message.role === "assistant" && (
+        <ResourceTable resources={message.resources} />
+      )}
+    </div>
+  );
+}
+
+// ---- main page ----
 export function OperatorChatPage({ auth, models }: { auth: ApiAuth; models: Model[] }) {
-  const [content, setContent] = useState("帮我看看现在集群里有什么异常吗？");
+  const [content, setContent] = useState("");
   const [modelId, setModelId] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const historyRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const chat = useChatOps(auth);
   const selectedModel = useMemo(() => models.find((model) => model.id === (modelId || models[0]?.id)), [modelId, models]);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.messages]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -66,6 +157,12 @@ export function OperatorChatPage({ auth, models }: { auth: ApiAuth; models: Mode
     setEditingId(null);
     setEditTitle("");
   }
+
+  const handleSend = () => {
+    if (!content.trim() || chat.sending || !selectedModel) return;
+    chat.send(content, selectedModel);
+    setContent("");
+  };
 
   return (
     <div className="workspace">
@@ -155,14 +252,11 @@ export function OperatorChatPage({ auth, models }: { auth: ApiAuth; models: Mode
 
       <div className="chatPanel">
         <div className="chatMessages">
-          {chat.messages.length === 0 ? <EmptyState title="输入自然语言运维指令开始巡检" /> : null}
+          {chat.messages.length === 0 ? <EmptyState title="选择一个模型，输入自然语言运维指令开始巡检" /> : null}
           {chat.messages.map((message) => (
-            <div key={message.id} className={`message ${message.role}`}>
-              {message.content}
-              {message.pending ? <span className="pending">分析中...</span> : null}
-              {message.resources?.length ? <ResourceTable resources={message.resources} /> : null}
-            </div>
+            <MessageBubble key={message.id} message={message} />
           ))}
+          <div ref={messagesEndRef} />
         </div>
         <div className="composer">
           <textarea
@@ -172,11 +266,11 @@ export function OperatorChatPage({ auth, models }: { auth: ApiAuth; models: Mode
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!chat.sending && selectedModel) chat.send(content, selectedModel);
+                handleSend();
               }
             }}
           />
-          <button disabled={chat.sending || !selectedModel} onClick={() => void chat.send(content, selectedModel)}>
+          <button disabled={chat.sending || !selectedModel} onClick={handleSend}>
             {chat.sending ? "发送中" : "发送"}
           </button>
         </div>

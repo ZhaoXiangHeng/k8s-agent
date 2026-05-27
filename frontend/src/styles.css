@@ -1064,6 +1064,104 @@ textarea {
   border-radius: 6px;
 }
 
+/* message markdown content */
+.messageContent h2,
+.messageContent h3,
+.messageContent h4 {
+  margin: 12px 0 6px;
+  color: inherit;
+}
+
+.messageContent p {
+  margin: 0 0 8px;
+}
+
+.messageContent p:last-child {
+  margin-bottom: 0;
+}
+
+.messageContent ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.messageContent li {
+  margin-bottom: 2px;
+}
+
+.messageContent code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.message.user .messageContent code {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e8f0f4;
+}
+
+.messageContent a {
+  color: #3a8fbf;
+}
+
+/* thinking & tool call blocks */
+.thinkingBlock {
+  margin-bottom: 8px;
+}
+
+.thinkingBlock .link-btn {
+  font-size: 12px;
+}
+
+.thinkingContent {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #667681;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.message.user .thinkingContent {
+  background: rgba(255, 255, 255, 0.08);
+  color: #bcc9d2;
+}
+
+.toolCallBlock {
+  margin-bottom: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.toolCallItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: #e8f5ef;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.toolCallItem.toolCallFail {
+  background: #fff1f0;
+}
+
+.toolCallName {
+  font-weight: 600;
+}
+
+.toolCallResult {
+  color: #667681;
+  font-size: 11px;
+}
+
 .boot {
   align-items: center;
   display: flex;

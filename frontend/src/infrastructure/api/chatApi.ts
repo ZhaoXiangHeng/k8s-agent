@@ -1,22 +1,24 @@
-import type { ChatResult, ChatSession } from "../../domain/chat";
+import type { ChatSession, ProtoStreamEvent } from "../../domain/chat";
 import { apiRequest, buildAuthHeaders, type ApiAuth } from "./client";
 
-export type RawSseEvent = ChatResult | { raw: string };
+export type SseEvent = ProtoStreamEvent | { raw: string };
 
-export function parseSseChunk(chunk: string): RawSseEvent[] {
+export function parseSseEvent(data: string): SseEvent {
+  try {
+    return JSON.parse(data) as ProtoStreamEvent;
+  } catch {
+    return { raw: data };
+  }
+}
+
+export function parseSseChunk(chunk: string): SseEvent[] {
   return chunk
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("data:"))
     .map((line) => line.slice(5).trim())
     .filter(Boolean)
-    .map((data) => {
-      try {
-        return JSON.parse(data) as ChatResult;
-      } catch {
-        return { raw: data };
-      }
-    });
+    .map(parseSseEvent);
 }
 
 export async function createChatSession(auth: ApiAuth): Promise<ChatSession> {
@@ -31,7 +33,7 @@ export async function sendChatMessage(
   auth: ApiAuth,
   sessionId: string,
   body: { modelId: string; content: string },
-  onEvent: (event: RawSseEvent) => void
+  onEvent: (event: SseEvent) => void
 ): Promise<void> {
   const response = await fetch(`/api/operator/chat/sessions/${sessionId}/messages`, {
     method: "POST",
@@ -43,7 +45,7 @@ export async function sendChatMessage(
   });
 
   if (!response.ok || !response.body) {
-    onEvent({ error: `Chat 请求失败：HTTP ${response.status}` });
+    onEvent({ error: { code: "HTTP_ERROR", message: `Chat 请求失败：HTTP ${response.status}` } });
     return;
   }
 

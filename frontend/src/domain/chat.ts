@@ -17,6 +17,26 @@ export type ChatResource = {
   node?: string;
 };
 
+// Proto StreamEvent from backend (camelCase JSON via protojson)
+export type ProtoStreamEvent = {
+  eventId?: string;
+  timestamp?: number;
+  thinking?: { content: string };
+  toolCall?: { toolName: string; argumentsJson: string };
+  toolResult?: { toolName: string; success: boolean; resultJson: string };
+  resource?: { resource?: ProtoResource };
+  complete?: { summary: string; resources?: ProtoResource[] };
+  error?: { code: string; message: string };
+};
+
+export type ProtoResource = {
+  kind?: string;
+  apiGroup?: string;
+  namespace?: string;
+  name?: string;
+  status?: string;
+};
+
 export type ChatResult = {
   messageId?: string;
   summary?: string;
@@ -30,4 +50,6 @@ export type ChatMessage = {
   content: string;
   resources?: ChatResource[];
   pending?: boolean;
+  thinking?: string;
+  toolCalls?: { name: string; args: string; result?: string; success?: boolean }[];
 };

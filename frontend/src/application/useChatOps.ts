@@ -1,10 +1,20 @@
 import { useState } from "react";
-import type { ChatMessage, ChatResult, ChatSession } from "../domain/chat";
+import type { ChatMessage, ChatResource, ChatSession, ProtoResource } from "../domain/chat";
 import type { Model } from "../domain/llm";
 import type { ApiAuth } from "../infrastructure/api/client";
 import { createChatSession, deleteChatSession, sendChatMessage } from "../infrastructure/api/chatApi";
+import type { SseEvent } from "../infrastructure/api/chatApi";
 import { appConfig } from "../config";
 import { mockChatResources, mockChatSession, mockChatSessions } from "./mockData";
+
+function mapProtoResource(r: ProtoResource): ChatResource {
+  return {
+    kind: r.kind,
+    namespace: r.namespace,
+    name: r.name,
+    phase: r.status,
+  };
+}
 
 export function useChatOps(auth: ApiAuth) {
   const [sessions, setSessions] = useState<ChatSession[]>(appConfig.dataMode === "mock" ? mockChatSessions : []);
@@ -59,7 +69,7 @@ export function useChatOps(auth: ApiAuth) {
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: "正在分析...",
+        content: "",
         pending: true
       };
       setMessages((current) => [...current, userMessage, assistantMessage]);
@@ -67,27 +77,65 @@ export function useChatOps(auth: ApiAuth) {
       if (appConfig.dataMode === "mock") {
         setMessages((current) => current.map((message) => message.id === assistantMessage.id ? {
           ...message,
-          content: "dev namespace 中发现 2 个异常 Pod：一个镜像拉取失败，一个 CrashLoopBackOff。建议先检查镜像地址、镜像凭据和最近的启动日志。",
+          content: "dev namespace 中发现 2 个异常 Pod：一个镜像拉取失败，一个 CrashLoopBackOff。\n\n建议先检查镜像地址、镜像凭据和最近的启动日志。",
           resources: mockChatResources,
           pending: false
         } : message));
         return;
       }
 
-      await sendChatMessage(auth, activeSession.id, { modelId: model.id, content }, (event) => {
-        const result = event as ChatResult;
+      await sendChatMessage(auth, activeSession.id, { modelId: model.id, content }, (event: SseEvent) => {
         setMessages((current) => current.map((message) => {
           if (message.id !== assistantMessage.id) return message;
-          if (result.error) return { ...message, content: result.error, pending: false };
-          if (result.summary) {
-            return {
-              ...message,
-              content: result.summary,
-              resources: result.resources ?? [],
-              pending: false
-            };
+
+          const e = event as Record<string, unknown>;
+
+          // thinking event: show in a thinking field
+          if (e.thinking && typeof e.thinking === "object") {
+            const t = e.thinking as { content: string };
+            return { ...message, thinking: (message.thinking || "") + t.content, content: "思考中..." };
           }
-          if ("raw" in event) return { ...message, content: event.raw, pending: true };
+
+          // toolCall event
+          if (e.toolCall && typeof e.toolCall === "object") {
+            const tc = e.toolCall as { toolName: string; argumentsJson: string };
+            const toolCalls = [...(message.toolCalls || []), { name: tc.toolName, args: tc.argumentsJson }];
+            return { ...message, toolCalls, content: `调用工具：${tc.toolName}...` };
+          }
+
+          // toolResult event
+          if (e.toolResult && typeof e.toolResult === "object") {
+            const tr = e.toolResult as { toolName: string; success: boolean; resultJson: string };
+            const toolCalls = (message.toolCalls || []).map((tc) =>
+              tc.name === tr.toolName && !tc.result ? { ...tc, result: tr.resultJson, success: tr.success } : tc
+            );
+            return { ...message, toolCalls, content: `工具 ${tr.toolName} ${tr.success ? "完成" : "失败"}` };
+          }
+
+          // resource event
+          if (e.resource && typeof e.resource === "object") {
+            const r = e.resource as { resource?: ProtoResource };
+            if (r.resource) {
+              const newRes = mapProtoResource(r.resource);
+              const resources = [...(message.resources || []), newRes];
+              return { ...message, resources };
+            }
+            return message;
+          }
+
+          // complete event: final markdown summary
+          if (e.complete && typeof e.complete === "object") {
+            const c = e.complete as { summary: string; resources?: ProtoResource[] };
+            const resources = (c.resources || []).map(mapProtoResource);
+            return { ...message, content: c.summary, resources, pending: false };
+          }
+
+          // error event
+          if (e.error && typeof e.error === "object") {
+            const err = e.error as { code: string; message: string };
+            return { ...message, content: err.message, pending: false };
+          }
+
           return message;
         }));
       });

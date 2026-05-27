@@ -746,6 +746,18 @@ func (x *StreamEvent) GetEvent() isStreamEvent_Event {
 	return nil
 }
 
+// XXX_OneofWrappers is for compatibility with protobuf-go old init path.
+func (*StreamEvent) XXX_OneofWrappers() []any {
+	return []any{
+		(*StreamEvent_Thinking)(nil),
+		(*StreamEvent_ToolCall)(nil),
+		(*StreamEvent_ToolResult)(nil),
+		(*StreamEvent_Resource)(nil),
+		(*StreamEvent_Complete)(nil),
+		(*StreamEvent_Error)(nil),
+	}
+}
+
 func (*StreamEvent_Thinking) isStreamEvent_Event()    {}
 func (*StreamEvent_ToolCall) isStreamEvent_Event()    {}
 func (*StreamEvent_ToolResult) isStreamEvent_Event()  {}

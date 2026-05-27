@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package identity.v1;
+
+option go_package = "k8s-ai-ops/proto/identity/v1;identityv1";
+
+service IdentityService {
+  rpc GetServiceAccount(GetServiceAccountRequest) returns (GetServiceAccountResponse);
+}
+
+message GetServiceAccountRequest {
+  string user_id = 1;
+}
+
+message GetServiceAccountResponse {
+  string sa_name = 1;
+  string namespace = 2;
+  string token = 3;
+  string ca_cert = 4;
+  string api_server = 5;
+}

@@ -96,5 +96,12 @@ export function useChatOps(auth: ApiAuth) {
     }
   }
 
-  return { session, sessions, activeSessionId: session?.id ?? "", messages, sending, send, startNewSession, selectSession, deleteSession };
+  function renameSession(sessionId: string, title: string) {
+    setSessions((current) => current.map((s) => (s.id === sessionId ? { ...s, title } : s)));
+    if (session?.id === sessionId) {
+      setSession({ ...session, title });
+    }
+  }
+
+  return { session, sessions, activeSessionId: session?.id ?? "", messages, sending, send, startNewSession, selectSession, deleteSession, renameSession };
 }

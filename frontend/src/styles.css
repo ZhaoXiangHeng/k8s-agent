@@ -679,6 +679,86 @@ th {
   border-color: #7cc7a4;
 }
 
+.sessionDropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  width: 340px;
+  background: #ffffff;
+  border: 1px solid #dce4e8;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.sessionDropdownHeader {
+  padding: 8px;
+  border-bottom: 1px solid #e5ebef;
+}
+
+.sessionDropdownHeader input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 34px;
+  font-size: 13px;
+}
+
+.sessionDropdownList {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.sessionDropdownItem {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.sessionDropdownItem.activeSession {
+  background: #e6f5ed;
+}
+
+.sessionTitleBtn {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: #162128;
+  min-height: auto;
+}
+
+.sessionTitleBtn span {
+  color: #667681;
+  font-size: 11px;
+}
+
+.sessionItemActions {
+  display: flex;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.sessionEditRow {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  width: 100%;
+  align-items: center;
+}
+
+.sessionEditRow input {
+  flex: 1;
+  min-height: 32px;
+  font-size: 13px;
+}
+
 .sessionHistory span {
   color: #667681;
   font-size: 12px;

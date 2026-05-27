@@ -8,8 +8,11 @@ import (
 
 type ServiceAccountToken struct {
 	UserID    string
+	SAName    string
 	Token     string
 	Namespace string
+	CACert    string
+	APIServer string
 }
 
 type MemoryStore struct {
@@ -280,6 +283,14 @@ func (s *MemoryStore) GetServiceAccountToken(userID string) (string, string, err
 		return "", "", fmt.Errorf("no service account token for user %s", userID)
 	}
 	return token.Token, token.Namespace, nil
+}
+
+func (s *MemoryStore) GetServiceAccount(userID string) (*ServiceAccountToken, error) {
+	token, ok := s.saTokens[userID]
+	if !ok {
+		return nil, fmt.Errorf("no service account token for user %s", userID)
+	}
+	return &token, nil
 }
 
 func (s *MemoryStore) VerifyPassword(username, password string) (User, bool) {

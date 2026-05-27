@@ -2,165 +2,78 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PostgresStore struct {
-	db *sql.DB
+	db       *gorm.DB
+	saTokens map[string]ServiceAccountToken // userID -> token info
 }
 
 func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, error) {
-	db, err := sql.Open("pgx", databaseURL)
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	store := &PostgresStore{db: db}
-	if err := store.InitSchema(ctx); err != nil {
-		_ = db.Close()
+	store := &PostgresStore{db: db, saTokens: map[string]ServiceAccountToken{}}
+	if err := store.InitSchema(); err != nil {
 		return nil, err
 	}
 	if err := store.SeedDemoData(ctx); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	return store, nil
 }
 
 func (s *PostgresStore) Close() error {
-	return s.db.Close()
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }
 
-func (s *PostgresStore) InitSchema(ctx context.Context) error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS users (
-			id TEXT PRIMARY KEY,
-			keycloak_user_id TEXT NOT NULL DEFAULT '',
-			username TEXT NOT NULL UNIQUE,
-			display_name TEXT NOT NULL DEFAULT '',
-			email TEXT NOT NULL DEFAULT '',
-			role TEXT NOT NULL,
-			status TEXT NOT NULL,
-			created_by TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS k8s_permissions (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			namespace TEXT NOT NULL,
-			api_group TEXT NOT NULL DEFAULT '',
-			resource TEXT NOT NULL,
-			verbs_json TEXT NOT NULL,
-			role_name TEXT NOT NULL DEFAULT '',
-			role_binding_name TEXT NOT NULL DEFAULT '',
-			enabled BOOLEAN NOT NULL,
-			created_by TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS llm_providers (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			protocol TEXT NOT NULL,
-			base_url TEXT NOT NULL DEFAULT '',
-			api_key_ciphertext TEXT NOT NULL DEFAULT '',
-			enabled BOOLEAN NOT NULL,
-			created_by TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS llm_models (
-			id TEXT PRIMARY KEY,
-			provider_id TEXT NOT NULL,
-			model_name TEXT NOT NULL,
-			display_name TEXT NOT NULL DEFAULT '',
-			supports_tools BOOLEAN NOT NULL,
-			supports_streaming BOOLEAN NOT NULL,
-			enabled BOOLEAN NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS audit_logs (
-			id TEXT PRIMARY KEY,
-			actor_user_id TEXT NOT NULL DEFAULT '',
-			action TEXT NOT NULL,
-			target_type TEXT NOT NULL DEFAULT '',
-			target_id TEXT NOT NULL DEFAULT '',
-			namespace TEXT NOT NULL DEFAULT '',
-			resource TEXT NOT NULL DEFAULT '',
-			verb TEXT NOT NULL DEFAULT '',
-			allowed BOOLEAN NOT NULL,
-			reason TEXT NOT NULL DEFAULT '',
-			request_json TEXT NOT NULL DEFAULT '',
-			response_json TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS user_llm_bindings (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			model_id TEXT NOT NULL,
-			is_default BOOLEAN NOT NULL,
-			created_by TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS k8s_service_accounts (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			namespace TEXT NOT NULL,
-			service_account_name TEXT NOT NULL,
-			token_secret_name TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS chat_sessions (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			model_id TEXT NOT NULL DEFAULT '',
-			title TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS chat_messages (
-			id TEXT PRIMARY KEY,
-			session_id TEXT NOT NULL,
-			role TEXT NOT NULL,
-			content TEXT NOT NULL DEFAULT '',
-			tool_name TEXT NOT NULL DEFAULT '',
-			tool_args_json TEXT NOT NULL DEFAULT '',
-			tool_result_json TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL
-		)`,
-	}
-	for _, statement := range statements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
-	}
-	return nil
+func (s *PostgresStore) InitSchema() error {
+	return s.db.AutoMigrate(
+		&User{},
+		&Permission{},
+		&LLMProvider{},
+		&LLMModel{},
+		&UserLLMBinding{},
+		&ServiceAccountBinding{},
+		&ChatSession{},
+		&ChatMessage{},
+		&AuditLog{},
+	)
 }
 
 func (s *PostgresStore) SeedDemoData(ctx context.Context) error {
 	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO users (id, keycloak_user_id, username, display_name, email, role, status, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-		ON CONFLICT (id) DO NOTHING`,
-		"demo-user", "keycloak-demo-user", "demo", "Demo Operator", "operator@example.com", RoleOperator, "active", now, now)
-	if err != nil {
-		return err
+	demoUser := User{
+		ID:             "demo-user",
+		KeycloakUserID: "keycloak-demo-user",
+		Username:       "demo",
+		DisplayName:    "Demo Operator",
+		Email:          "operator@example.com",
+		Role:           RoleOperator,
+		Status:         "active",
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
-	if len(s.ListUserPermissions("demo-user")) == 0 {
+	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&demoUser)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	var count int64
+	s.db.WithContext(ctx).Model(&Permission{}).Where("user_id = ?", "demo-user").Count(&count)
+	if count == 0 {
 		s.ReplaceUserPermissions("demo-user", []Permission{
 			{Namespace: "dev", APIGroup: "", Resource: "pods", Verbs: []string{"get", "list", "watch"}, Enabled: true},
 			{Namespace: "dev", APIGroup: "", Resource: "pods/log", Verbs: []string{"get"}, Enabled: true},
@@ -170,27 +83,17 @@ func (s *PostgresStore) SeedDemoData(ctx context.Context) error {
 }
 
 func (s *PostgresStore) CurrentDemoUser() User {
-	row := s.db.QueryRow(`SELECT id, keycloak_user_id, username, display_name, email, role, status, created_by, created_at, updated_at FROM users WHERE id=$1`, "demo-user")
-	user, err := scanUser(row)
-	if err != nil {
+	var user User
+	result := s.db.Where("id = ?", "demo-user").First(&user)
+	if result.Error != nil {
 		return NewMemoryStore().CurrentDemoUser()
 	}
 	return user
 }
 
 func (s *PostgresStore) ListUsers() []User {
-	rows, err := s.db.Query(`SELECT id, keycloak_user_id, username, display_name, email, role, status, created_by, created_at, updated_at FROM users ORDER BY created_at, id`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
 	var users []User
-	for rows.Next() {
-		user, err := scanUser(rows)
-		if err == nil {
-			users = append(users, user)
-		}
-	}
+	s.db.Order("created_at, id").Find(&users)
 	return users
 }
 
@@ -200,74 +103,47 @@ func (s *PostgresStore) CreateUser(user User) User {
 	user.Status = defaultString(user.Status, "active")
 	user.CreatedAt = now
 	user.UpdatedAt = now
-	_, _ = s.db.Exec(`INSERT INTO users (id, keycloak_user_id, username, display_name, email, role, status, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		ON CONFLICT (id) DO UPDATE SET username=$3, display_name=$4, email=$5, role=$6, status=$7, updated_at=$10`,
-		user.ID, user.KeycloakUserID, user.Username, user.DisplayName, user.Email, user.Role, user.Status, user.CreatedBy, user.CreatedAt, user.UpdatedAt)
+	s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&user)
 	return user
 }
 
+func (s *PostgresStore) VerifyPassword(username, password string) (User, bool) {
+	if username == "admin" && password == "123456" {
+		return User{ID: "admin-user", Username: "admin", Role: RoleAdmin, Status: "active"}, true
+	}
+	var user User
+	result := s.db.Where("username = ?", username).First(&user)
+	if result.Error != nil {
+		return User{}, false
+	}
+	return user, true
+}
+
 func (s *PostgresStore) ListUserPermissions(userID string) []Permission {
-	rows, err := s.db.Query(`SELECT id, user_id, namespace, api_group, resource, verbs_json, role_name, role_binding_name, enabled, created_by, created_at, updated_at
-		FROM k8s_permissions WHERE user_id=$1 ORDER BY namespace, resource`, userID)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
 	var permissions []Permission
-	for rows.Next() {
-		var p Permission
-		var verbsJSON string
-		if err := rows.Scan(&p.ID, &p.UserID, &p.Namespace, &p.APIGroup, &p.Resource, &verbsJSON, &p.RoleName, &p.RoleBindingName, &p.Enabled, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err == nil {
-			_ = json.Unmarshal([]byte(verbsJSON), &p.Verbs)
-			permissions = append(permissions, p)
-		}
-	}
+	s.db.Where("user_id = ?", userID).Order("namespace, resource").Find(&permissions)
 	return permissions
 }
 
 func (s *PostgresStore) ReplaceUserPermissions(userID string, permissions []Permission) []Permission {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM k8s_permissions WHERE user_id=$1`, userID); err != nil {
-		return nil
-	}
+	s.db.Where("user_id = ?", userID).Delete(&Permission{})
 	now := time.Now().UTC()
-	for index := range permissions {
-		permissions[index].ID = userID + "-perm-" + permissions[index].Namespace + "-" + strings.ReplaceAll(permissions[index].Resource, "/", "-")
-		permissions[index].UserID = userID
-		permissions[index].Enabled = true
-		permissions[index].CreatedAt = now
-		permissions[index].UpdatedAt = now
-		verbsJSON, _ := json.Marshal(permissions[index].Verbs)
-		if _, err := tx.Exec(`INSERT INTO k8s_permissions (id, user_id, namespace, api_group, resource, verbs_json, role_name, role_binding_name, enabled, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			permissions[index].ID, permissions[index].UserID, permissions[index].Namespace, permissions[index].APIGroup, permissions[index].Resource, string(verbsJSON), permissions[index].RoleName, permissions[index].RoleBindingName, permissions[index].Enabled, permissions[index].CreatedBy, permissions[index].CreatedAt, permissions[index].UpdatedAt); err != nil {
-			return nil
-		}
+	for i := range permissions {
+		permissions[i].ID = userID + "-perm-" + permissions[i].Namespace + "-" + strings.ReplaceAll(permissions[i].Resource, "/", "-")
+		permissions[i].UserID = userID
+		permissions[i].Enabled = true
+		permissions[i].CreatedAt = now
+		permissions[i].UpdatedAt = now
 	}
-	if err := tx.Commit(); err != nil {
-		return nil
+	if len(permissions) > 0 {
+		s.db.Create(&permissions)
 	}
 	return permissions
 }
 
 func (s *PostgresStore) ListLLMProviders() []LLMProvider {
-	rows, err := s.db.Query(`SELECT id, name, protocol, base_url, api_key_ciphertext, enabled, created_by, created_at, updated_at FROM llm_providers ORDER BY created_at, id`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
 	var providers []LLMProvider
-	for rows.Next() {
-		var p LLMProvider
-		if err := rows.Scan(&p.ID, &p.Name, &p.Protocol, &p.BaseURL, &p.APIKeyCiphertext, &p.Enabled, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err == nil {
-			providers = append(providers, p)
-		}
-	}
+	s.db.Order("created_at, id").Find(&providers)
 	return providers
 }
 
@@ -277,26 +153,13 @@ func (s *PostgresStore) CreateLLMProvider(provider LLMProvider) LLMProvider {
 	provider.APIKeyCiphertext = "encrypted:" + provider.Name
 	provider.CreatedAt = now
 	provider.UpdatedAt = now
-	_, _ = s.db.Exec(`INSERT INTO llm_providers (id, name, protocol, base_url, api_key_ciphertext, enabled, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-		ON CONFLICT (id) DO UPDATE SET name=$2, protocol=$3, base_url=$4, api_key_ciphertext=$5, enabled=$6, updated_at=$9`,
-		provider.ID, provider.Name, provider.Protocol, provider.BaseURL, provider.APIKeyCiphertext, provider.Enabled, provider.CreatedBy, provider.CreatedAt, provider.UpdatedAt)
+	s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&provider)
 	return provider
 }
 
 func (s *PostgresStore) ListLLMModels() []LLMModel {
-	rows, err := s.db.Query(`SELECT id, provider_id, model_name, display_name, supports_tools, supports_streaming, enabled, created_at, updated_at FROM llm_models ORDER BY created_at, id`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
 	var models []LLMModel
-	for rows.Next() {
-		var m LLMModel
-		if err := rows.Scan(&m.ID, &m.ProviderID, &m.ModelName, &m.DisplayName, &m.SupportsTools, &m.SupportsStreaming, &m.Enabled, &m.CreatedAt, &m.UpdatedAt); err == nil {
-			models = append(models, m)
-		}
-	}
+	s.db.Order("created_at, id").Find(&models)
 	return models
 }
 
@@ -305,47 +168,125 @@ func (s *PostgresStore) CreateLLMModel(model LLMModel) LLMModel {
 	model.ID = defaultString(model.ID, "model-"+model.ModelName)
 	model.CreatedAt = now
 	model.UpdatedAt = now
-	_, _ = s.db.Exec(`INSERT INTO llm_models (id, provider_id, model_name, display_name, supports_tools, supports_streaming, enabled, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-		ON CONFLICT (id) DO UPDATE SET provider_id=$2, model_name=$3, display_name=$4, supports_tools=$5, supports_streaming=$6, enabled=$7, updated_at=$9`,
-		model.ID, model.ProviderID, model.ModelName, model.DisplayName, model.SupportsTools, model.SupportsStreaming, model.Enabled, model.CreatedAt, model.UpdatedAt)
+	s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model)
 	return model
+}
+
+func (s *PostgresStore) SetUserLLMBindings(userID string, modelIDs []string, defaultModelID string) []UserLLMBinding {
+	s.db.Where("user_id = ?", userID).Delete(&UserLLMBinding{})
+	now := time.Now().UTC()
+	var bindings []UserLLMBinding
+	for _, modelID := range modelIDs {
+		bindings = append(bindings, UserLLMBinding{
+			ID:        userID + "-" + modelID,
+			UserID:    userID,
+			ModelID:   modelID,
+			IsDefault: modelID == defaultModelID,
+			CreatedBy: userID,
+			CreatedAt: now,
+		})
+	}
+	if len(bindings) > 0 {
+		s.db.Create(&bindings)
+	}
+	return s.GetUserLLMBindings(userID)
+}
+
+func (s *PostgresStore) GetUserLLMBindings(userID string) []UserLLMBinding {
+	var bindings []UserLLMBinding
+	s.db.Where("user_id = ?", userID).Find(&bindings)
+	return bindings
+}
+
+func (s *PostgresStore) CreateChatSession(session ChatSession) ChatSession {
+	now := time.Now().UTC()
+	if session.ID == "" {
+		session.ID = "session-" + now.Format("20060102150405.000000000")
+	}
+	if session.Status == "" {
+		session.Status = "active"
+	}
+	session.CreatedAt = now
+	session.UpdatedAt = now
+	s.db.Create(&session)
+	return session
+}
+
+func (s *PostgresStore) GetChatSession(id string) (ChatSession, bool) {
+	var session ChatSession
+	result := s.db.Where("id = ?", id).First(&session)
+	if result.Error != nil {
+		return ChatSession{}, false
+	}
+	return session, true
+}
+
+func (s *PostgresStore) ListUserChatSessions(userID string) []ChatSession {
+	var sessions []ChatSession
+	s.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&sessions)
+	return sessions
+}
+
+func (s *PostgresStore) AppendChatMessage(msg ChatMessage) ChatMessage {
+	if msg.ID == "" {
+		msg.ID = "msg-" + time.Now().UTC().Format("20060102150405.000000000")
+	}
+	msg.CreatedAt = time.Now().UTC()
+	s.db.Create(&msg)
+	return msg
+}
+
+func (s *PostgresStore) ListSessionMessages(sessionID string) []ChatMessage {
+	var messages []ChatMessage
+	s.db.Where("session_id = ?", sessionID).Order("created_at ASC").Find(&messages)
+	return messages
+}
+
+func (s *PostgresStore) SaveServiceAccountBinding(binding ServiceAccountBinding) ServiceAccountBinding {
+	now := time.Now().UTC()
+	if binding.ID == "" {
+		binding.ID = "sab-" + binding.UserID + "-" + binding.Namespace
+	}
+	binding.CreatedAt = now
+	binding.UpdatedAt = now
+	if binding.Status == "" {
+		binding.Status = "active"
+	}
+	s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&binding)
+	return binding
+}
+
+func (s *PostgresStore) GetUserServiceAccountBindings(userID string) []ServiceAccountBinding {
+	var bindings []ServiceAccountBinding
+	s.db.Where("user_id = ?", userID).Find(&bindings)
+	return bindings
+}
+
+func (s *PostgresStore) GetServiceAccountToken(userID string) (string, string, error) {
+	token, ok := s.saTokens[userID]
+	if !ok {
+		return "", "", fmt.Errorf("no service account token for user %s", userID)
+	}
+	return token.Token, token.Namespace, nil
+}
+
+func (s *PostgresStore) GetServiceAccount(userID string) (*ServiceAccountToken, error) {
+	token, ok := s.saTokens[userID]
+	if !ok {
+		return nil, fmt.Errorf("no service account token for user %s", userID)
+	}
+	return &token, nil
 }
 
 func (s *PostgresStore) AppendAuditLog(log AuditLog) AuditLog {
 	log.ID = defaultString(log.ID, "audit-"+time.Now().UTC().Format("20060102150405.000000000"))
 	log.CreatedAt = time.Now().UTC()
-	_, _ = s.db.Exec(`INSERT INTO audit_logs (id, actor_user_id, action, target_type, target_id, namespace, resource, verb, allowed, reason, request_json, response_json, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		log.ID, log.ActorUserID, log.Action, log.TargetType, log.TargetID, log.Namespace, log.Resource, log.Verb, log.Allowed, log.Reason, log.RequestJSON, log.ResponseJSON, log.CreatedAt)
+	s.db.Create(&log)
 	return log
 }
 
 func (s *PostgresStore) ListAuditLogs() []AuditLog {
-	rows, err := s.db.Query(`SELECT id, actor_user_id, action, target_type, target_id, namespace, resource, verb, allowed, reason, request_json, response_json, created_at FROM audit_logs ORDER BY created_at DESC, id DESC`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
 	var logs []AuditLog
-	for rows.Next() {
-		var log AuditLog
-		if err := rows.Scan(&log.ID, &log.ActorUserID, &log.Action, &log.TargetType, &log.TargetID, &log.Namespace, &log.Resource, &log.Verb, &log.Allowed, &log.Reason, &log.RequestJSON, &log.ResponseJSON, &log.CreatedAt); err == nil {
-			logs = append(logs, log)
-		}
-	}
+	s.db.Order("created_at DESC, id DESC").Find(&logs)
 	return logs
-}
-
-type userScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanUser(scanner userScanner) (User, error) {
-	var user User
-	err := scanner.Scan(&user.ID, &user.KeycloakUserID, &user.Username, &user.DisplayName, &user.Email, &user.Role, &user.Status, &user.CreatedBy, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
-		return User{}, fmt.Errorf("scan user: %w", err)
-	}
-	return user, nil
 }

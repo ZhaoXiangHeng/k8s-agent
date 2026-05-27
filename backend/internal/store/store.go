@@ -39,6 +39,8 @@ type Store interface {
 	GetUserServiceAccountBindings(userID string) []ServiceAccountBinding
 	// GetServiceAccountToken returns the K8S SA token and namespace for a user.
 	GetServiceAccountToken(userID string) (token, namespace string, err error)
+	// GetServiceAccount returns the full K8S ServiceAccount info for a user.
+	GetServiceAccount(userID string) (*ServiceAccountToken, error)
 
 	// Audit logs
 	AppendAuditLog(log AuditLog) AuditLog

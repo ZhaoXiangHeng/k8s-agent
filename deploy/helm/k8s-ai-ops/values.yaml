@@ -67,5 +67,10 @@ redis:
   service:
     port: 6379
 
-ingress:
-  enabled: false
+# Traefik API Gateway — 统一入口，参照 anybackup-ai 部署架构
+traefik:
+  enabled: true
+  image: traefik:v3.6.13
+  # hostPort 将 Traefik web entrypoint(8000) 映射到宿主机端口
+  # 外部通过 http://<node-ip>:<hostPort> 访问
+  hostPort: 80

@@ -1,0 +1,62 @@
+{{- if .Values.traefik.enabled }}
+---
+# Frontend: lowest priority, catches all HTML/JS/CSS requests
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: frontend
+  namespace: {{ .Values.global.namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/`)
+      priority: 1
+      services:
+        - name: frontend
+          port: {{ .Values.frontend.service.port }}
+
+---
+# Backend API: higher priority, catches /api/* requests
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: backend-api
+  namespace: {{ .Values.global.namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/api/`)
+      priority: 100
+      services:
+        - name: backend-api
+          port: {{ .Values.backend.service.port }}
+
+---
+{{- if .Values.keycloak.enabled }}
+# Keycloak: highest priority, catches /auth/* requests
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: keycloak
+  namespace: {{ .Values.global.namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/auth/`)
+      priority: 200
+      services:
+        - name: keycloak
+          port: {{ .Values.keycloak.service.port }}
+{{- end }}
+
+---
+# Agent Server gRPC: internal only, handled by backend proxy
+# MCP Server SSE: internal, agent-server connects directly
+# Both remain internal ClusterIP, not exposed via Traefik
+{{- end }}

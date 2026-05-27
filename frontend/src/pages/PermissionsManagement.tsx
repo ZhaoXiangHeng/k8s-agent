@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { listUsers } from "../store/auth";
 import type { User } from "../store/auth";
 
@@ -37,9 +37,15 @@ const mockPermissionsByUser: Record<string, Permission[]> = {
   ],
 };
 
-export default function PermissionsManagement() {
+export default function PermissionsManagement({ preselectedUserId }: { preselectedUserId?: string }) {
   const users = listUsers();
-  const [selectedUserId, setSelectedUserId] = useState(users[0]?.id ?? "");
+  const [selectedUserId, setSelectedUserId] = useState(preselectedUserId ?? (users[0]?.id || ""));
+
+  useEffect(() => {
+    if (preselectedUserId) {
+      selectUser(preselectedUserId);
+    }
+  }, [preselectedUserId]);
   const [rows, setRows] = useState<PermissionFormRow[]>(() => {
     const perms = mockPermissionsByUser[selectedUserId];
     if (!perms || perms.length === 0) return [initialRow];

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   listUsers,
   getAssignedModels,
@@ -8,9 +8,16 @@ import {
 } from "../store/auth";
 import type { Model } from "../store/auth";
 
-export default function ModelAssignment() {
+export default function ModelAssignment({ preselectedUserId }: { preselectedUserId?: string }) {
   const users = listUsers();
-  const [selectedUserId, setSelectedUserId] = useState<string>(users[0]?.id ?? "");
+  const [selectedUserId, setSelectedUserId] = useState<string>(preselectedUserId ?? (users[0]?.id || ""));
+
+  // Sync preselected user from parent navigation
+  useEffect(() => {
+    if (preselectedUserId) {
+      selectUser(preselectedUserId);
+    }
+  }, [preselectedUserId]);
 
   const assignedModels = useMemo(() => getAssignedModels(selectedUserId), [selectedUserId]);
   const availableModels = useMemo(() => getAvailableModels(selectedUserId), [selectedUserId]);

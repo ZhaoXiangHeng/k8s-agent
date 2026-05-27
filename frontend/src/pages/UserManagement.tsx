@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { listUsers, createUser, resetPassword } from "../store/auth";
 import type { User } from "../store/auth";
 
-export default function UserManagement() {
+interface UserManagementProps {
+  onNavigateToTab?: (tab: "models" | "permissions", userId: string) => void;
+}
+
+export default function UserManagement({ onNavigateToTab }: UserManagementProps) {
   const [users, setUsers] = useState<User[]>(listUsers());
   const [showCreate, setShowCreate] = useState(false);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Create form state
   const [newUsername, setNewUsername] = useState("");
@@ -16,6 +22,19 @@ export default function UserManagement() {
 
   // Reset password state
   const [resetPasswordValue, setResetPasswordValue] = useState("");
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(null);
+      }
+    }
+    if (menuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
   const handleCreate = () => {
     if (!newUsername || !newPassword) return;
@@ -33,6 +52,11 @@ export default function UserManagement() {
     resetPassword(resetTarget.id, resetPasswordValue);
     setResetPasswordValue("");
     setResetTarget(null);
+  };
+
+  const handleMenuAction = (tab: "models" | "permissions", user: User) => {
+    setMenuOpen(null);
+    onNavigateToTab?.(tab, user.id);
   };
 
   return (
@@ -103,12 +127,34 @@ export default function UserManagement() {
                   <td>{u.email}</td>
                   <td>{u.createdAt}</td>
                   <td>
-                    <button
-                      className="link-btn"
-                      onClick={() => setResetTarget(u)}
-                    >
-                      重置密码
-                    </button>
+                    <div className="rowActions" style={{ position: "relative" }}>
+                      <button
+                        className="link-btn"
+                        onClick={() => setResetTarget(u)}
+                      >
+                        重置密码
+                      </button>
+                      <button
+                        className="iconButton"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpen(menuOpen === u.id ? null : u.id);
+                        }}
+                        title="更多操作"
+                      >
+                        ···
+                      </button>
+                      {menuOpen === u.id && (
+                        <div className="contextMenu" ref={menuRef}>
+                          <button onClick={() => handleMenuAction("models", u)}>
+                            🔗 配置模型
+                          </button>
+                          <button onClick={() => handleMenuAction("permissions", u)}>
+                            🔑 配置权限
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

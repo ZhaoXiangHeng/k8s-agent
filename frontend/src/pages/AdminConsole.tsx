@@ -7,6 +7,7 @@ type AdminTab = "users" | "models" | "permissions";
 
 export default function AdminConsole() {
   const [tab, setTab] = useState<AdminTab>("users");
+  const [preselectedUserId, setPreselectedUserId] = useState<string | undefined>();
 
   useEffect(() => {
     const subTab = sessionStorage.getItem("adminSubTab");
@@ -14,6 +15,11 @@ export default function AdminConsole() {
     else if (subTab === "用户与权限") setTab("users");
     sessionStorage.removeItem("adminSubTab");
   }, []);
+
+  const handleNavigateToTab = (targetTab: "models" | "permissions", userId: string) => {
+    setPreselectedUserId(userId);
+    setTab(targetTab);
+  };
 
   return (
     <div className="admin-console">
@@ -37,7 +43,13 @@ export default function AdminConsole() {
           权限管理
         </button>
       </div>
-      {tab === "users" ? <UserManagement /> : tab === "models" ? <ModelAssignment /> : <PermissionsManagement />}
+      {tab === "users" ? (
+        <UserManagement onNavigateToTab={handleNavigateToTab} />
+      ) : tab === "models" ? (
+        <ModelAssignment preselectedUserId={preselectedUserId} />
+      ) : (
+        <PermissionsManagement preselectedUserId={preselectedUserId} />
+      )}
     </div>
   );
 }

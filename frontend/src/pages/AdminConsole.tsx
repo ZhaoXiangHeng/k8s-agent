@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import UserManagement from "./UserManagement";
 import ModelAssignment from "./ModelAssignment";
+import PermissionsManagement from "./PermissionsManagement";
 
-type AdminTab = "users" | "models";
+type AdminTab = "users" | "models" | "permissions";
 
 export default function AdminConsole() {
   const [tab, setTab] = useState<AdminTab>("users");
@@ -29,8 +30,14 @@ export default function AdminConsole() {
         >
           模型分配
         </button>
+        <button
+          className={tab === "permissions" ? "tab active" : "tab"}
+          onClick={() => setTab("permissions")}
+        >
+          权限管理
+        </button>
       </div>
-      {tab === "users" ? <UserManagement /> : <ModelAssignment />}
+      {tab === "users" ? <UserManagement /> : tab === "models" ? <ModelAssignment /> : <PermissionsManagement />}
     </div>
   );
 }

@@ -6,6 +6,7 @@ export interface User {
   role: "admin" | "operator";
   displayName: string;
   email: string;
+  notes: string;
   createdAt: string;
 }
 
@@ -23,6 +24,7 @@ const defaultUsers: User[] = [
     role: "admin",
     displayName: "管理员",
     email: "admin@example.com",
+    notes: "",
     createdAt: "2026-01-01",
   },
   {
@@ -32,6 +34,7 @@ const defaultUsers: User[] = [
     role: "operator",
     displayName: "操作员",
     email: "operator@example.com",
+    notes: "",
     createdAt: "2026-01-15",
   },
 ];
@@ -76,6 +79,7 @@ export function createUser(
     role,
     displayName,
     email,
+    notes: "",
     createdAt: new Date().toISOString().split("T")[0],
   };
   users.push(newUser);
@@ -91,7 +95,7 @@ export function resetPassword(userId: string, newPassword: string): boolean {
 
 export function updateUser(
   userId: string,
-  fields: { username?: string; role?: "admin" | "operator"; displayName?: string; email?: string }
+  fields: { username?: string; role?: "admin" | "operator"; displayName?: string; email?: string; notes?: string }
 ): User | null {
   const user = users.find((u) => u.id === userId);
   if (!user) return null;
@@ -99,6 +103,7 @@ export function updateUser(
   if (fields.role !== undefined) user.role = fields.role;
   if (fields.displayName !== undefined) user.displayName = fields.displayName;
   if (fields.email !== undefined) user.email = fields.email;
+  if (fields.notes !== undefined) user.notes = fields.notes;
   return user;
 }
 

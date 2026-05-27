@@ -11,7 +11,7 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
   const [showCreate, setShowCreate] = useState(false);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [editTarget, setEditTarget] = useState<User | null>(null);
-  const [editForm, setEditForm] = useState({ username: "", role: "operator" as "admin" | "operator", displayName: "", email: "" });
+  const [editForm, setEditForm] = useState({ username: "", role: "operator" as "admin" | "operator", displayName: "", email: "", notes: "" });
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +64,7 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
       role: user.role,
       displayName: user.displayName,
       email: user.email,
+      notes: user.notes || "",
     });
   };
 
@@ -133,6 +134,7 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
                 <th>用户名</th>
                 <th>角色</th>
                 <th>邮箱</th>
+                <th>备注</th>
                 <th>创建时间</th>
                 <th>操作</th>
               </tr>
@@ -145,6 +147,9 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
                     <span className={`role-badge ${u.role}`}>{u.role}</span>
                   </td>
                   <td>{u.email}</td>
+                  <td style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.notes}>
+                    {u.notes || "-"}
+                  </td>
                   <td>{u.createdAt}</td>
                   <td>
                     <div className="rowActions" style={{ position: "relative" }}>
@@ -242,6 +247,15 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
               <input
                 value={editForm.email}
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>备注</label>
+              <textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                placeholder="备注信息"
+                rows={3}
               />
             </div>
             <div className="drawer-actions">

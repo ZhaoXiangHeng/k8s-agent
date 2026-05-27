@@ -18,12 +18,15 @@ func ListDeploymentsTool() mcp.Tool {
 
 func HandleListDeployments(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		namespace := getStringArg(getArgs(req), "namespace")
+		namespace := req.GetString("namespace", "")
 		deps, err := client.ListDeployments(ctx, namespace)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to list deployments: %v", err)), nil
 		}
-		data, _ := json.Marshal(deps)
+		data, err := json.Marshal(deps)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }
@@ -38,25 +41,17 @@ func RestartDeploymentTool() mcp.Tool {
 
 func HandleRestartDeployment(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := getArgs(req)
-		namespace, _ := args["namespace"].(string)
-		name, _ := args["name"].(string)
+		namespace, err := req.RequireString("namespace")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		name, err := req.RequireString("name")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		if err := client.RestartDeployment(ctx, namespace, name); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to restart deployment: %v", err)), nil
 		}
 		return mcp.NewToolResultText(fmt.Sprintf(`{"success":true,"message":"restarted deployment %s/%s"}`, namespace, name)), nil
 	}
-}
-
-func getStringArg(args map[string]any, key string) string {
-	v, _ := args[key].(string)
-	return v
-}
-
-func getArgs(req mcp.CallToolRequest) map[string]any {
-	args, ok := req.Params.Arguments.(map[string]any)
-	if !ok {
-		return make(map[string]any)
-	}
-	return args
 }

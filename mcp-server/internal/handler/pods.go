@@ -19,14 +19,16 @@ func ListPodsTool() mcp.Tool {
 
 func HandleListPods(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := getArgs(req)
-		namespace := getStringArg(args, "namespace")
-		labelSelector := getStringArg(args, "label_selector")
+		namespace := req.GetString("namespace", "")
+		labelSelector := req.GetString("label_selector", "")
 		pods, err := client.ListPods(ctx, namespace, labelSelector)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to list pods: %v", err)), nil
 		}
-		data, _ := json.Marshal(pods)
+		data, err := json.Marshal(pods)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }
@@ -41,14 +43,22 @@ func GetPodTool() mcp.Tool {
 
 func HandleGetPod(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := getArgs(req)
-		namespace, _ := args["namespace"].(string)
-		name, _ := args["name"].(string)
+		namespace, err := req.RequireString("namespace")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		name, err := req.RequireString("name")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		pod, err := client.GetPod(ctx, namespace, name)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to get pod: %v", err)), nil
 		}
-		data, _ := json.Marshal(pod)
+		data, err := json.Marshal(pod)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }
@@ -65,14 +75,16 @@ func GetPodLogsTool() mcp.Tool {
 
 func HandleGetPodLogs(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := getArgs(req)
-		namespace, _ := args["namespace"].(string)
-		name, _ := args["name"].(string)
-		container, _ := args["container"].(string)
-		tailLines := int64(50)
-		if v, ok := args["tail_lines"].(float64); ok {
-			tailLines = int64(v)
+		namespace, err := req.RequireString("namespace")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
 		}
+		name, err := req.RequireString("name")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		container := req.GetString("container", "")
+		tailLines := int64(req.GetFloat("tail_lines", 50))
 		logs, err := client.GetPodLogs(ctx, namespace, name, container, tailLines)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to get pod logs: %v", err)), nil

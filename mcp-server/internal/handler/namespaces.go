@@ -21,7 +21,10 @@ func HandleListNamespaces(client *k8s.Client) func(ctx context.Context, req mcp.
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to list namespaces: %v", err)), nil
 		}
-		data, _ := json.Marshal(names)
+		data, err := json.Marshal(names)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }

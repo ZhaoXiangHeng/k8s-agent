@@ -19,14 +19,22 @@ func GetPodEventsTool() mcp.Tool {
 
 func HandleGetPodEvents(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := getArgs(req)
-		namespace, _ := args["namespace"].(string)
-		name, _ := args["name"].(string)
+		namespace, err := req.RequireString("namespace")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		name, err := req.RequireString("name")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		events, err := client.ListEvents(ctx, namespace, name)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to list events: %v", err)), nil
 		}
-		data, _ := json.Marshal(events)
+		data, err := json.Marshal(events)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
 }

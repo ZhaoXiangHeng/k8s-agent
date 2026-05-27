@@ -32,7 +32,29 @@ func (s *ChatService) CreateSession(ctx context.Context, userID string) (*ChatSe
 	if err := s.repos.ChatSessions.Save(ctx, session); err != nil {
 		return nil, fmt.Errorf("save session: %w", err)
 	}
-	return &ChatSessionResponse{ID: session.ID, UserID: userID, Status: "active"}, nil
+	return &ChatSessionResponse{
+		ID: session.ID, UserID: userID, Title: session.Title,
+		Status: "active", CreatedAt: session.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}, nil
+}
+
+// DeleteSession 删除会话（含所有权校验）。
+func (s *ChatService) DeleteSession(ctx context.Context, sessionID, userID string) error {
+	session, err := s.repos.ChatSessions.FindByID(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("find session: %w", err)
+	}
+	if session.UserID != userID {
+		return fmt.Errorf("%w: session %s does not belong to user %s", domain.ErrForbidden, sessionID, userID)
+	}
+	session.Status = "closed"
+	if err := s.repos.ChatSessions.Save(ctx, session); err != nil {
+		return fmt.Errorf("close session: %w", err)
+	}
+	appLog.WithFields(logrus.Fields{
+		"event": "session_deleted", "session_id": sessionID,
+	}).Info("session closed")
+	return nil
 }
 
 // ProcessMessage 处理一条 Chat 消息的完整流程：

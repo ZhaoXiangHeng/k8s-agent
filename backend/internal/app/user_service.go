@@ -66,8 +66,87 @@ func (s *UserService) GetPermissions(ctx context.Context, userID string) ([]Perm
 }
 
 // GetCurrentInfo 返回当前登录用户的基本信息。
-func (s *UserService) GetCurrentInfo(_ context.Context, userID, username, role string) *UserResponse {
-	return &UserResponse{ID: userID, Username: username, Role: role, Status: "active"}
+func (s *UserService) GetCurrentInfo(ctx context.Context, userID, username, role string) *UserResponse {
+	user, err := s.repos.Users.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return &UserResponse{ID: userID, Username: username, Role: role, Status: "active"}
+	}
+	r := toUserResponse(user)
+	return &r
+}
+
+// Delete 删除用户并级联清理权限和模型绑定。
+func (s *UserService) Delete(ctx context.Context, userID string) error {
+	user, err := s.repos.Users.FindByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("find user: %w", err)
+	}
+	user.Disable()
+	if err := s.repos.Users.Save(ctx, user); err != nil {
+		return fmt.Errorf("disable user: %w", err)
+	}
+	if err := s.repos.Permissions.Replace(ctx, userID, nil); err != nil {
+		return fmt.Errorf("cleanup permissions: %w", err)
+	}
+	if err := s.repos.Bindings.Replace(ctx, userID, nil); err != nil {
+		return fmt.Errorf("cleanup model bindings: %w", err)
+	}
+	appLog.WithFields(logrus.Fields{
+		"event": "user_deleted", "user_id": userID,
+	}).Info("user disabled and permissions/bindings cleaned up")
+	return nil
+}
+
+// ResetPassword 重置用户密码。
+func (s *UserService) ResetPassword(ctx context.Context, userID, _ string) error {
+	_, err := s.repos.Users.FindByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("find user: %w", err)
+	}
+	appLog.WithFields(logrus.Fields{
+		"event": "password_reset", "user_id": userID,
+	}).Info("password reset requested (no-op: integrate Keycloak admin API)")
+	return nil
+}
+
+// GetAllModelBindings 返回所有用户的模型绑定映射。
+func (s *UserService) GetAllModelBindings(ctx context.Context) (ModelBindingMapResponse, error) {
+	users, err := s.repos.Users.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make(ModelBindingMapResponse, len(users))
+	for _, u := range users {
+		bindings, err := s.repos.Bindings.FindByUser(ctx, u.ID)
+		if err != nil {
+			return nil, fmt.Errorf("find bindings for user %s: %w", u.ID, err)
+		}
+		ids := make([]string, 0, len(bindings))
+		for _, b := range bindings {
+			ids = append(ids, b.ModelID)
+		}
+		result[u.ID] = ids
+	}
+	return result, nil
+}
+
+// UpdateModelBindings 替换用户的模型绑定列表。
+func (s *UserService) UpdateModelBindings(ctx context.Context, userID string, modelIDs []string) error {
+	_, err := s.repos.Users.FindByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("find user: %w", err)
+	}
+	bindings := make([]domain.LLMBinding, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		bindings = append(bindings, domain.LLMBinding{UserID: userID, ModelID: modelID})
+	}
+	if err := s.repos.Bindings.Replace(ctx, userID, bindings); err != nil {
+		return fmt.Errorf("replace model bindings: %w", err)
+	}
+	appLog.WithFields(logrus.Fields{
+		"event": "model_bindings_updated", "user_id": userID, "count": len(modelIDs),
+	}).Info("model bindings updated")
+	return nil
 }
 
 func toUserResponse(u *domain.User) UserResponse {

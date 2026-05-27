@@ -7,9 +7,20 @@ package app
 // CreateUserRequest 创建用户请求。
 type CreateUserRequest struct {
 	Username    string `json:"username"    binding:"required"`
+	Password    string `json:"password"`
 	Email       string `json:"email"`
 	Role        string `json:"role"        binding:"required,oneof=admin operator"`
 	DisplayName string `json:"displayName"`
+}
+
+// ResetPasswordRequest 重置密码请求。
+type ResetPasswordRequest struct {
+	Password string `json:"password" binding:"required"`
+}
+
+// UpdateModelBindingsRequest 更新用户模型绑定请求。
+type UpdateModelBindingsRequest struct {
+	ModelIDs []string `json:"modelIds" binding:"required"`
 }
 
 // UpdatePermissionsRequest 更新权限请求。
@@ -114,9 +125,13 @@ type ModelResponse struct {
 type ChatSessionResponse struct {
 	ID        string `json:"id"`
 	UserID    string `json:"userId"`
+	Title     string `json:"title,omitempty"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
 }
+
+// ModelBindingMapResponse 所有用户的模型绑定映射。
+type ModelBindingMapResponse map[string][]string
 
 // AuditLogResponse 审计日志响应。
 type AuditLogResponse struct {

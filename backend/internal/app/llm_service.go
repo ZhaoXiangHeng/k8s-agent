@@ -182,3 +182,37 @@ func (s *LLMService) UpdateModel(ctx context.Context, id string, req UpdateModel
 		SupportsStreaming: m.SupportsStreaming, Enabled: m.Enabled,
 	}, nil
 }
+
+func (s *LLMService) DeleteModel(ctx context.Context, id string) error {
+	m, err := s.repos.Models.FindByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("find model: %w", err)
+	}
+	m.Disable()
+	if err := s.repos.Models.Save(ctx, m); err != nil {
+		return fmt.Errorf("disable model: %w", err)
+	}
+	users, err := s.repos.Users.FindAll(ctx)
+	if err != nil {
+		return fmt.Errorf("find users for binding cleanup: %w", err)
+	}
+	for _, u := range users {
+		bindings, err := s.repos.Bindings.FindByUser(ctx, u.ID)
+		if err != nil {
+			continue
+		}
+		filtered := make([]domain.LLMBinding, 0, len(bindings))
+		for _, b := range bindings {
+			if b.ModelID != id {
+				filtered = append(filtered, b)
+			}
+		}
+		if len(filtered) != len(bindings) {
+			if err := s.repos.Bindings.Replace(ctx, u.ID, filtered); err != nil {
+				appLog.WithError(err).WithField("user_id", u.ID).Warn("failed to cleanup model binding")
+			}
+		}
+	}
+	appLog.WithFields(logrus.Fields{"event": "llm_model_deleted", "model_id": id}).Info("model disabled and bindings cleaned up")
+	return nil
+}

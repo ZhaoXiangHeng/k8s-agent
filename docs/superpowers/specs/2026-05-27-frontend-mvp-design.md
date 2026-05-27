@@ -10,6 +10,7 @@
 
 - 实现多页面 TO B 控制台体验。
 - 对接 Backend 已实现的真实 HTTP API 和 Chat SSE 流。
+- 实现 Keycloak 前端登录流程，在生产认证模式下获取 Access Token 并随 API 请求发送。
 - 按前端 DDD 风格拆分领域类型、应用用例、基础设施 API 客户端和界面组件。
 - 支持管理员完整 MVP 操作：用户创建、权限编辑、Provider 创建/更新、Model 创建/更新、审计查看。
 - 支持操作员完整 MVP 操作：查看权限、选择授权模型、创建 Chat 会话、发送自然语言运维指令、展示 AI 总结和结构化资源结果。
@@ -17,11 +18,11 @@
 
 ## 非目标
 
-- 不实现 Keycloak 前端登录流程；当前继续使用 Backend mock 认证上下文。
 - 不新增全局状态管理库。
 - 不引入大型 UI 组件库。
 - 不实现复杂路由权限守卫；本阶段使用内置导航和角色可见性控制。
 - 不修改 Backend API 契约。
+- 不实现 Keycloak Admin API 用户同步；管理员创建用户仍调用现有 Backend 用户接口。
 
 ## 用户体验设计
 
@@ -35,6 +36,10 @@
 
 页面划分：
 
+- 认证：
+  - `登录页`：展示产品名、Keycloak 登录按钮、开发模式演示登录入口和登录错误。
+  - `认证回调`：处理 Keycloak Authorization Code + PKCE 回调，交换 Token，保存会话后进入控制台。
+  - `退出登录`：清理本地会话，并在 Keycloak 模式下跳转到 Keycloak logout endpoint。
 - 操作员：
   - `Chat 运维`：模型选择、消息列表、输入框、流式响应状态、资源结果表。
   - `我的权限`：展示 namespace、apiGroup、resource、verbs 和启用状态。
@@ -52,7 +57,9 @@ Frontend 采用轻量 DDD 风格，目录建议如下：
 
 ```text
 frontend/src/
+  config.ts
   domain/
+    auth.ts
     audit.ts
     chat.ts
     llm.ts
@@ -61,6 +68,7 @@ frontend/src/
   infrastructure/
     api/
       client.ts
+      authApi.ts
       auditApi.ts
       chatApi.ts
       llmApi.ts
@@ -68,6 +76,7 @@ frontend/src/
       userApi.ts
   application/
     useAdminData.ts
+    useAuth.ts
     useChatOps.ts
     useOperatorData.ts
   interfaces/
@@ -82,7 +91,7 @@ frontend/src/
 分层职责：
 
 - `domain`：只定义业务类型、枚举和值转换，不依赖 React 和浏览器 API。
-- `infrastructure/api`：封装 `fetch`、错误解析、JSON 请求、SSE 解析和 Backend 路径。
+- `infrastructure/api`：封装 `fetch`、错误解析、JSON 请求、SSE 解析、Backend 路径和认证 header 注入。
 - `application`：组合 API 调用和页面状态，暴露用例级 hook。
 - `interfaces`：负责 React 组件、表单、表格、导航和视觉样式。
 
@@ -96,11 +105,47 @@ interfaces -> domain
 
 其中 `domain` 不依赖外层。`infrastructure/api` 依赖领域类型来描述输入输出，但不包含页面状态。
 
+## 认证设计
+
+Frontend 支持两种认证模式：
+
+- `dev`：本地演示模式。前端不跳转 Keycloak，请求 API 时可附带 `X-Demo-User` 和 `X-Demo-Role`，与 Backend `AUTH_MODE=dev` 对齐。
+- `keycloak`：生产模式。前端使用 Keycloak OIDC Authorization Code + PKCE 登录，拿到 `access_token` 后通过 `Authorization: Bearer <token>` 调用 Backend，与 Backend `AUTH_MODE=jwt` 对齐。
+
+认证配置通过 Vite 环境变量注入：
+
+```text
+VITE_AUTH_MODE=dev|keycloak
+VITE_KEYCLOAK_URL=http://localhost:8089
+VITE_KEYCLOAK_REALM=k8s-ai
+VITE_KEYCLOAK_CLIENT_ID=k8s-ai-frontend
+VITE_KEYCLOAK_REDIRECT_URI=http://localhost:5173/auth/callback
+```
+
+Keycloak 登录流程：
+
+1. 用户点击登录。
+2. 前端生成 `code_verifier`、`code_challenge` 和 `state`，暂存到 `sessionStorage`。
+3. 浏览器跳转到 Keycloak authorization endpoint。
+4. Keycloak 回调 `/auth/callback?code=...&state=...`。
+5. 前端校验 `state`，使用 `code_verifier` 调用 token endpoint。
+6. 前端保存 `access_token`、`refresh_token`、过期时间和基础用户声明。
+7. 前端调用 `GET /api/me` 获取 Backend 认可的当前用户与角色。
+
+Token 存储策略：
+
+- 本阶段使用 `sessionStorage` 保存 Token，刷新页面仍保留当前标签页会话。
+- 不把 Token 写入日志、审计、URL 持久化参数或 UI 明文。
+- 请求前如 Access Token 接近过期，优先使用 Refresh Token 刷新；刷新失败则回到登录页。
+- 登出时清理本地 Token，并在 Keycloak 模式下跳转到 logout endpoint。
+
 ## API 对接
 
 统一请求客户端：
 
 - 基础路径默认为 `/api`。
+- `keycloak` 模式下所有 API 请求附带 `Authorization: Bearer <access_token>`。
+- `dev` 模式下可附带 `X-Demo-User` 和 `X-Demo-Role`，默认使用操作员演示身份。
 - HTTP 错误解析 Backend 统一错误结构：
 
 ```json
@@ -139,6 +184,8 @@ Chat 消息接口按 SSE 处理。前端发送 `modelId` 和 `content` 后，从
 
 ## 状态与错误处理
 
+- 未登录或 `GET /api/me` 返回 `UNAUTHENTICATED` 时进入登录页。
+- 当前用户角色为 `admin` 时展示管理员和操作员页面；角色为 `operator` 时只展示操作员页面。
 - 页面级数据加载使用 `loading`、`error`、`data` 三态。
 - 表单提交时禁用提交按钮，成功后刷新对应列表。
 - 错误提示展示 Backend `error.message`，并在可用时展示 `requestId`。
@@ -185,7 +232,9 @@ Model 表单字段：
 
 先补前端测试工具链，再以 TDD 方式实现关键逻辑：
 
+- Auth 客户端能生成 PKCE 参数、构造 Keycloak 授权 URL，并校验回调 `state`。
 - API 客户端能正确解析成功响应和 Backend 错误响应。
+- API 客户端能在 Keycloak 模式下注入 `Authorization` header，在 dev 模式下注入演示用户 header。
 - SSE 解析器能解析 `data: ...` 行、忽略空行，并识别错误事件。
 - 权限表单能组装 Backend 需要的 `permissions` payload。
 - Chat 用例能创建会话、发送消息并追加 assistant 结果。
@@ -208,12 +257,15 @@ npm run build
 - `docs/product/requirements.md`
 - `docs/reference/api-design.md`
 - `docs/developer/developer-guide.md`
+- `docs/operations/deployment-guide.md`
 
-如果接口路径或字段不变，仅需更新“当前实现状态”和前端验证说明。
+如果接口路径或字段不变，仅需更新“当前实现状态”、前端验证说明和 Keycloak 前端配置说明。
 
 ## 验收标准
 
 - Frontend 构建通过。
+- Keycloak 模式下可以完成登录、回调、Token 保存、调用 `/api/me` 和退出登录。
+- Dev 模式下可以使用演示身份进入控制台。
 - 页面可以展示当前用户和角色。
 - 操作员可以查看自己的权限和可用模型。
 - 操作员可以创建 Chat 会话，发送消息，并看到流式或最终响应。

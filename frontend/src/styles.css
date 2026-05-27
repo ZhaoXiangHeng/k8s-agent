@@ -744,6 +744,18 @@ textarea {
   align-self: start;
 }
 
+.drawerOverlay {
+  background: rgb(17 28 36 / 42%);
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 99;
+}
+
 .drawerPanel {
   background: #ffffff;
   box-shadow: -14px 0 30px rgb(17 28 36 / 18%);

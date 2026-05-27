@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-server
+  namespace: {{ .Values.global.namespace }}
+spec:
+  replicas: {{ .Values.agentServer.replicas }}
+  selector:
+    matchLabels:
+      app: agent-server
+  template:
+    metadata:
+      labels:
+        app: agent-server
+    spec:
+      containers:
+        - name: agent-server
+          image: {{ include "k8s-ai-ops.image" (list . .Values.agentServer.image.repository) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - containerPort: 8082
+          env:
+            - name: GRPC_ADDR
+              value: ":8082"
+            - name: MCP_SERVER_URL
+              value: "http://mcp-server:8081"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-server
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: agent-server
+  ports:
+    - port: {{ .Values.agentServer.service.port }}
+      targetPort: 8082

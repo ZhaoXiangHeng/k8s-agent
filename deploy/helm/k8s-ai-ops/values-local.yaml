@@ -1,0 +1,15 @@
+images:
+  source: tar
+  tag: local
+  pullPolicy: IfNotPresent
+
+ingress:
+  enabled: false
+
+rbac:
+  managedNamespaces:
+    - dev
+    - test
+
+agentServer:
+  replicas: 1

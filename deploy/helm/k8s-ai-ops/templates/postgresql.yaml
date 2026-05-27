@@ -1,0 +1,44 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: {{ .Values.global.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-ai-secrets
+                  key: POSTGRES_PASSWORD
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: postgresql
+  ports:
+    - port: {{ .Values.postgresql.service.port }}
+      targetPort: 5432
+{{- end }}

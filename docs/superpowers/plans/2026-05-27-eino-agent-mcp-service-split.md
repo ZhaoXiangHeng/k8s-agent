@@ -14,7 +14,7 @@
 
 ### 新增文件
 
-- `backend/internal/agent/client.go`：`backend-api` 调用 `agent-server` 的 HTTP client。
+- `backend/internal/agent/client.go`：`backend-api` 调用 `agent-server` 的 gRPC client。
 - `backend/internal/agent/types.go`：`backend-api` 与 `agent-server` 共享的稳定 DTO。
 - `backend/internal/agent/client_test.go`：agent client 单元测试。
 - `agent-server/go.mod`：新服务 Go module。
@@ -22,7 +22,7 @@
 - `agent-server/Dockerfile`：新服务镜像构建。
 - `agent-server/cmd/server/main.go`：新服务入口。
 - `agent-server/internal/config/config.go`：读取 `HTTP_ADDR`、`MCP_SERVER_URL`。
-- `agent-server/internal/http/router.go`：`/healthz` 和 `/api/agent/runs`。
+- `agent-server/internal/server/server.go`：实现 proto 生成的 `AgentServiceServer`。
 - `agent-server/internal/http/router_test.go`：agent HTTP API 测试。
 - `agent-server/internal/agent/types.go`：agent 服务内部 DTO，字段与 backend DTO 保持一致。
 - `agent-server/internal/agent/runner.go`：runner 接口和默认 runner。
@@ -36,7 +36,7 @@
 
 ### 修改文件
 
-- `backend/cmd/api/main.go`：读取 `AGENT_SERVER_URL` 并注入 agent client。
+- `backend/cmd/api/main.go`：读取 `AGENT_SERVER_ADDR` 并注入 gRPC agent client。
 - `backend/internal/config/config.go`：新增 `AgentServerURL`。
 - `backend/internal/config/config_test.go`：覆盖默认值和环境变量。
 - `backend/internal/http/router.go`：Chat 消息改为调用 agent-server，写工具事件审计。
@@ -48,7 +48,7 @@
 - `deploy/helm/k8s-ai-ops/values.yaml`：新增 `agentServer`。
 - `deploy/helm/k8s-ai-ops/values-local.yaml`：同步本地配置。
 - `deploy/helm/k8s-ai-ops/values-prod-example.yaml`：同步生产示例配置。
-- `deploy/helm/k8s-ai-ops/templates/backend.yaml`：新增 `AGENT_SERVER_URL`。
+- `deploy/helm/k8s-ai-ops/templates/backend.yaml`：新增 `AGENT_SERVER_ADDR`。
 - `README.md`：更新服务列表、命令和镜像产物。
 - `ARCHITECTURE.md`：更新三服务架构摘要。
 - `AI_PROMPTS.md`：记录本次架构决策。
@@ -70,10 +70,13 @@
 
 ---
 
-## Task 1: 定义 backend 到 agent-server 的稳定契约
+## Task 1: 定义 backend 到 agent-server 的 proto/gRPC 稳定契约
 
 **Files:**
-- Create: `backend/internal/agent/types.go`
+- Create: `proto/agent/v1/agent.proto`
+- Create: `proto/agent/v1/agent.pb.go`
+- Create: `proto/agent/v1/agent_grpc.pb.go`
+- Create: `proto/go.mod`
 - Create: `backend/internal/agent/client.go`
 - Create: `backend/internal/agent/client_test.go`
 
@@ -92,7 +95,7 @@ import (
 
 func TestClientRunSendsRequestAndParsesResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/agent/runs" {
+		if request.GetMessage() == "" {
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		var request RunRequest
@@ -122,7 +125,7 @@ func TestClientRunSendsRequestAndParsesResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(server.URL)
+	client := NewGRPCClient(agentv1.NewAgentServiceClient(conn))
 	response, err := client.Run(context.Background(), RunRequest{
 		Message: "检查 dev 异常 Pod",
 		User: UserContext{
@@ -143,9 +146,9 @@ func TestClientRunSendsRequestAndParsesResponse(t *testing.T) {
 
 Run: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "go test ./internal/agent"` from `backend`
 
-Expected: FAIL，提示 `backend/internal/agent` 包或 `NewHTTPClient` 未定义。
+Expected: FAIL，提示 `backend/internal/agent` 包或 `NewGRPCClient` 未定义。
 
-- [ ] **Step 3: 实现 DTO 和 HTTP client**
+- [ ] **Step 3: 实现 proto 生成代码和 gRPC client**
 
 `backend/internal/agent/types.go`:
 
@@ -259,7 +262,7 @@ type HTTPClient struct {
 	client  *http.Client
 }
 
-func NewHTTPClient(baseURL string) *HTTPClient {
+func NewGRPCClient(client agentv1.AgentServiceClient) *GRPCClient {
 	return &HTTPClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		client:  &http.Client{Timeout: 30 * time.Second},
@@ -271,7 +274,7 @@ func (c *HTTPClient) Run(ctx context.Context, request RunRequest) (RunResponse, 
 	if err != nil {
 		return RunResponse{}, err
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/agent/runs", bytes.NewReader(body))
+	response, err := c.client.Run(ctx, request)
 	if err != nil {
 		return RunResponse{}, err
 	}
@@ -307,7 +310,7 @@ git commit -m "feat: add backend agent client contract"
 
 ---
 
-## Task 2: 新增 agent-server HTTP 骨架和 mock runner
+## Task 2: 新增 agent-server gRPC 骨架和 Eino runner
 
 **Files:**
 - Create: `agent-server/go.mod`
@@ -317,10 +320,12 @@ git commit -m "feat: add backend agent client contract"
 - Create: `agent-server/internal/agent/types.go`
 - Create: `agent-server/internal/agent/runner.go`
 - Create: `agent-server/internal/agent/mock_runner.go`
-- Create: `agent-server/internal/http/router.go`
-- Create: `agent-server/internal/http/router_test.go`
+- Create: `agent-server/internal/server/server.go`
+- Create: `agent-server/internal/server/server_test.go`
+- Create: `agent-server/internal/eino/runner.go`
+- Create: `agent-server/internal/eino/runner_test.go`
 
-- [ ] **Step 1: 写失败测试，验证 `/healthz` 和 `/api/agent/runs`**
+- [ ] **Step 1: 写失败测试，验证 gRPC `AgentService.Run`**
 
 ```go
 package http
@@ -346,7 +351,7 @@ func TestRouterHealthz(t *testing.T) {
 func TestRouterRunsAgent(t *testing.T) {
 	payload := []byte(`{"message":"检查 dev 异常 Pod","user":{"id":"demo-user","username":"operator-a"}}`)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/agent/runs", bytes.NewReader(payload))
+	response, err := service.Run(context.Background(), request)
 
 	NewRouter(agent.NewMockRunner()).ServeHTTP(recorder, request)
 
@@ -451,7 +456,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	case r.Method == http.MethodPost && r.URL.Path == "/api/agent/runs":
+	func (s *AgentService) Run(ctx context.Context, request *agentv1.AgentRunRequest) (*agentv1.AgentRunResponse, error) {
 		s.runAgent(w, r)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": map[string]string{"code": "NOT_FOUND", "message": "The requested API endpoint was not found."}})
@@ -520,7 +525,7 @@ git commit -m "feat: add agent server skeleton"
 
 ---
 
-## Task 3: backend-api Chat 接入 agent-server 和多轮上下文
+## Task 3: backend-api Chat 通过 gRPC 接入 agent-server 和多轮上下文
 
 **Files:**
 - Modify: `backend/internal/config/config.go`
@@ -609,7 +614,7 @@ AgentServerURL string
 `Load()` 增加：
 
 ```go
-AgentServerURL: env("AGENT_SERVER_URL", "http://agent-server:8082"),
+AgentServerAddr: env("AGENT_SERVER_ADDR", "agent-server:8082"),
 ```
 
 `backend/internal/http/router.go` 增加字段和 setter：
@@ -625,7 +630,7 @@ func (s *Server) SetAgentClient(client agent.Client) {
 `NewServer` 默认设置 mock agent client 或 nil fallback。`backend/cmd/api/main.go` 在创建 server 后注入：
 
 ```go
-server.SetAgentClient(agent.NewHTTPClient(cfg.AgentServerURL))
+server.SetAgentClient(agent.NewGRPCClient(agentv1.NewAgentServiceClient(agentConn)))
 ```
 
 - [ ] **Step 4: 将 `createChatMessage` 改为调用 agent-server**
@@ -1095,13 +1100,13 @@ spec:
       targetPort: 8082
 ```
 
-- [ ] **Step 4: backend 注入 `AGENT_SERVER_URL`**
+- [ ] **Step 4: backend 注入 `AGENT_SERVER_ADDR`**
 
 `deploy/helm/k8s-ai-ops/templates/backend.yaml` env 增加：
 
 ```yaml
-- name: AGENT_SERVER_URL
-  value: "http://agent-server:8082"
+- name: AGENT_SERVER_ADDR
+  value: "agent-server:8082"
 ```
 
 - [ ] **Step 5: 构建脚本新增镜像和 tar**
@@ -1117,7 +1122,7 @@ docker save "k8s-ai-agent-server:$TAG" -o "$OUTPUT_DIR/agent-server-amd64.tar"
 
 Run: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "helm template k8s-ai deploy/helm/k8s-ai-ops | Select-String 'agent-server'"` from repo root
 
-Expected: 输出包含 `name: agent-server`、`k8s-ai-agent-server`、`AGENT_SERVER_URL`。
+Expected: 输出包含 `name: agent-server`、`k8s-ai-agent-server`、`AGENT_SERVER_ADDR`。
 
 - [ ] **Step 7: 提交**
 
@@ -1188,7 +1193,7 @@ git commit -m "feat: deploy agent server"
 
 - [ ] **Step 5: 文档一致性扫描**
 
-Run: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "Select-String -Path README.md,ARCHITECTURE.md,AI_PROMPTS.md,docs\\**\\*.md -Pattern 'agent-server|AGENT_SERVER_URL|8082|k8s-ai-agent-server'"`
+Run: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "Select-String -Path README.md,ARCHITECTURE.md,AI_PROMPTS.md,docs\\**\\*.md -Pattern 'agent-server|AGENT_SERVER_ADDR|8082|k8s-ai-agent-server|AgentService.Run'"`
 
 Expected: 多个文档均出现新服务说明。
 

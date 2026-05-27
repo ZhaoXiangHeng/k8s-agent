@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/50353/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/**)",
+      "Bash(go build *)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(go test *)",
+      "Bash(sed -i 's/^\t\tsession\\\\.ID = session\\\\.ID$/\t\t\\\\/\\\\/ session.ID already set/' backend/internal/store/memory.go)",
+      "Bash(sed -i 's/^\t\tmsg\\\\.ID = msg\\\\.ID$/\t\t\\\\/\\\\/ msg.ID already set/' backend/internal/store/memory.go)",
+      "Bash(sed -i 's/^\t\tbinding\\\\.ID = binding\\\\.ID$/\t\t\\\\/\\\\/ binding.ID already set/' backend/internal/store/memory.go)",
+      "Bash(python3 insert_tables.py)",
+      "Bash(\"/c/Users/50353/AppData/Local/Microsoft/WindowsApps/python3\" \"E:/k8s-agent/insert_tables.py\")",
+      "Bash(go get *)",
+      "Bash(GOPROXY=direct go get gorm.io/gorm@v1.26.0)",
+      "Read(//c/Users/50353/go/pkg/mod/gorm.io\" 2>/dev/**)",
+      "Bash(go env *)",
+      "Bash(GOPROXY=https://goproxy.cn,https://goproxy.io,direct go get gorm.io/gorm@v1.26.0)",
+      "Bash(GOPROXY=https://goproxy.cn,https://goproxy.io,direct go get gorm.io/driver/postgres@v1.26.0)",
+      "Bash(GONOSUMCHECK=* GONOSUMDB=* GOFLAGS=-mod=mod GOPROXY=https://goproxy.cn,https://goproxy.io,direct go get gorm.io/driver/postgres@v1.26.0)",
+      "Bash(rm -rf \"C:\\\\Users\\\\50353\\\\go\\\\pkg\\\\mod\\\\cache\\\\vcs\\\\84246a40d9530ee8c30336da99cd0e1fd66706cdda2d5b796939e345bfc0bbad\")",
+      "Bash(GONOSUMCHECK=* GONOSUMDB=* GONOSUMCHECK=* GOFLAGS=\"-mod=mod\" GOPROXY=https://goproxy.cn,https://goproxy.io,direct go get gorm.io/driver/postgres@latest)",
+      "Bash(GONOSUMCHECK=* GONOSUMDB=* GOPROXY=https://goproxy.cn,https://goproxy.io,direct go get github.com/redis/go-redis/v9@latest)",
+      "Bash(GONOSUMCHECK=* GONOSUMDB=* GOPROXY=https://goproxy.cn,https://goproxy.io,direct go mod tidy)"
+    ]
+  }
+}

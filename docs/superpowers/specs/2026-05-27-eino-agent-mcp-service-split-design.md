@@ -10,16 +10,17 @@
 - `mcp-server` 目前是自定义 HTTP 工具服务 stub，还不是标准 MCP 服务。
 - Chat 消息接口当前返回固定巡检结果，尚未接入真实 LLM agent loop。
 
-本设计目标是一次性重构为 `backend-api + agent-server + 标准 MCP server` 三服务架构，引入 Eino 作为 Go agent 编排框架，并同步更新所有受影响文档。
+本设计目标是一次性重构为 `backend-api + agent-server + 标准 MCP server` 三服务架构，引入 Eino 作为 Go agent 编排框架，`backend-api` 与 `agent-server` 之间使用 gRPC 通信，并同步更新所有受影响文档。
 
 ## 目标
 
 1. 新增独立 `agent-server` 服务，使用 Eino 承接 LLM 编排、tool calling 和 MCP client 调用。
 2. 将 `mcp-server` 从自定义 HTTP stub 演进为标准 MCP 工具服务。
-3. 保留 `backend-api` 作为前端唯一入口，继续负责认证、权限、模型配置、会话、审计和安全闸口。
-4. 建立稳定的内部 DTO，避免 Eino 类型泄漏到前端 API 或 `backend-api` 外部契约。
-5. 支持多轮对话上下文：`backend-api` 管理会话历史，`agent-server` 只消费本轮请求携带的最小必要上下文。
-6. 同步更新 `docs/` 下所有受影响文档，确保需求、架构、API、部署、安全和运维说明与代码一致。
+3. `backend-api` 与 `agent-server` 之间使用 gRPC 调用 `AgentService.Run`，不再使用 HTTP JSON 作为服务间 Chat Run 协议。
+4. 保留 `backend-api` 作为前端唯一入口，继续负责认证、权限、模型配置、会话、审计和安全闸口。
+5. 建立稳定的内部 DTO，避免 Eino 类型泄漏到前端 API 或 `backend-api` 外部契约。
+6. 支持多轮对话上下文：`backend-api` 管理会话历史，`agent-server` 只消费本轮请求携带的最小必要上下文。
+7. 同步更新 `docs/` 下所有受影响文档，确保需求、架构、API、部署、安全和运维说明与代码一致。
 
 ## 非目标
 
@@ -34,7 +35,7 @@
 ```mermaid
 flowchart LR
   UI["Frontend"] --> API["backend-api"]
-  API --> Agent["agent-server / Eino"]
+  API -->|"gRPC AgentService.Run"| Agent["agent-server / Eino"]
   Agent --> LLM["LLM Provider"]
   Agent --> MCP["mcp-server / 标准 MCP"]
   MCP --> K8S["Kubernetes API"]
@@ -52,7 +53,7 @@ flowchart LR
 - 根据当前用户权限生成工具 allowlist。
 - 读取当前 Chat Session 的历史消息，按策略裁剪和脱敏后传给 `agent-server`。
 - 维护最近资源引用，例如上一轮返回的 Pod、Deployment、Event，用于支持“这个 Pod”“刚才那个 Deployment”等多轮指代。
-- 调用 `agent-server` 执行一次 Chat Run。
+- 通过 gRPC 调用 `agent-server` 的 `AgentService.Run` 执行一次 Chat Run。
 - 记录 Chat 消息、LLM 请求摘要、工具调用事件、允许或拒绝访问事件。
 - 在模型未绑定、工具越权、agent 服务不可用时返回结构化错误。
 
@@ -85,11 +86,28 @@ flowchart LR
 
 每个工具必须声明资源、verb 和参数 schema。执行前必须校验请求中的授权上下文，执行时必须使用当前用户绑定的 ServiceAccount 调用 Kubernetes API。
 
-## 内部接口
+## 内部 gRPC 接口
+
+`backend-api` 与 `agent-server` 使用 gRPC 通信。契约必须以 `.proto` 文件为唯一来源，并提交生成后的 Go 代码。禁止手写与 `.proto` 重复但不受生成链路约束的服务间 DTO。
+
+文件位置：
+
+- `proto/agent/v1/agent.proto`：Agent gRPC 契约。
+- `proto/agent/v1/agent.pb.go`：由 `protoc-gen-go` 生成。
+- `proto/agent/v1/agent_grpc.pb.go`：由 `protoc-gen-go-grpc` 生成。
+- `proto/go.mod`：共享 proto Go module，供 `backend` 与 `agent-server` 通过 `replace ../proto` 引用。
+
+服务定义：
+
+```proto
+service AgentService {
+  rpc Run(AgentRunRequest) returns (AgentRunResponse);
+}
+```
 
 ### `AgentRunRequest`
 
-`backend-api` 调用 `agent-server` 时使用稳定 DTO：
+`backend-api` 调用 `agent-server` 的 `AgentService.Run` 时使用稳定 DTO：
 
 ```json
 {
@@ -227,10 +245,10 @@ agentServer:
 环境变量调整：
 
 - `backend-api`
-  - `AGENT_SERVER_URL=http://agent-server:8082`
+  - `AGENT_SERVER_ADDR=agent-server:8082`
   - 保留 `MCP_SERVER_URL` 作为迁移期兼容项，最终由 `agent-server` 使用。
 - `agent-server`
-  - `HTTP_ADDR=:8082`
+  - `GRPC_ADDR=:8082`
   - `MCP_SERVER_URL=http://mcp-server:8081`
 - `mcp-server`
   - `HTTP_ADDR=:8081`
@@ -267,7 +285,7 @@ image-tars/agent-server-amd64.tar
 ### 部署
 
 - Helm 模板渲染包含 `agent-server` Deployment 和 Service。
-- `backend-api` 注入 `AGENT_SERVER_URL`。
+- `backend-api` 注入 `AGENT_SERVER_ADDR`。
 - `agent-server` 注入 `MCP_SERVER_URL`。
 - 构建脚本包含新增镜像和 tar 输出。
 
@@ -287,11 +305,11 @@ image-tars/agent-server-amd64.tar
 - `docs/architecture/chat-mcp-flow.md`：更新 Eino agent loop 和标准 MCP 调用链路。
 - `docs/architecture/data-model.md`：更新 Chat 消息历史、最近资源引用、审计、LLM 配置模型说明。
 - `docs/developer/developer-guide.md`：更新目录结构、agent-server 开发方式、测试命令。
-- `docs/operations/deployment-guide.md`：更新 Helm values、镜像、端口、环境变量、部署命令。
+- `docs/operations/deployment-guide.md`：更新 Helm values、镜像、端口、gRPC 地址、环境变量、部署命令。
 - `docs/operations/observability-and-troubleshooting.md`：更新 agent-server 日志、审计事件和排错路径。
 - `docs/operations/public-cloud-test-plan.md`：更新公有云测试服务列表和验证步骤。
 - `docs/security/security-design.md`：更新 LLM、agent、MCP、K8S 工具调用安全边界。
-- `docs/reference/api-design.md`：更新 Chat API、错误码和内部 agent 调用契约说明。
+- `docs/reference/api-design.md`：更新 Chat API、错误码和内部 gRPC agent 调用契约说明。
 - `docs/reference/glossary.md`：补充 Eino、Agent Server、MCP Tool、Tool Allowlist 等术语。
 
 所有新增或修改的 Markdown 文档必须使用中文。

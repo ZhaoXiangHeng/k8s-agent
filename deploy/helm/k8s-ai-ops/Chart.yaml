@@ -1,0 +1,6 @@
+apiVersion: v2
+name: k8s-ai-ops
+description: Kubernetes AI operations assistant with Keycloak, Backend API, MCP Server, and React UI.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

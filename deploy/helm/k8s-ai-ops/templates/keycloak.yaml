@@ -1,0 +1,43 @@
+{{- if .Values.keycloak.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: {{ .Values.global.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: {{ .Values.keycloak.image }}
+          args: ["start-dev"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: {{ .Values.keycloak.adminUser | quote }}
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-ai-secrets
+                  key: KEYCLOAK_ADMIN_PASSWORD
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: keycloak
+  ports:
+    - port: {{ .Values.keycloak.service.port }}
+      targetPort: 8080
+{{- end }}

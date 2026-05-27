@@ -1,0 +1,28 @@
+images:
+  source: registry
+  registry: registry.example.com/k8s-ai
+  tag: v1.0.0
+  pullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+keycloak:
+  enabled: false
+
+postgresql:
+  enabled: false
+
+redis:
+  enabled: false
+
+backend:
+  storeDriver: postgres
+  cacheDriver: redis
+  rbacSyncEnabled: true
+
+agentServer:
+  replicas: 2
+
+rbac:
+  managedNamespaces:
+    - dev
+    - test

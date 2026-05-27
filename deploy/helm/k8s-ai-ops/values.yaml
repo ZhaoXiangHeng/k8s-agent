@@ -1,0 +1,70 @@
+global:
+  namespace: k8s-ai-system
+
+images:
+  source: tar
+  registry: ""
+  tag: local
+  pullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+frontend:
+  replicas: 1
+  image:
+    repository: k8s-ai-frontend
+  service:
+    port: 80
+
+backend:
+  replicas: 1
+  image:
+    repository: k8s-ai-backend
+  service:
+    port: 8080
+  encryptionKey: change-me-32-byte-development-key
+  storeDriver: postgres
+  cacheDriver: redis
+  rbacSyncEnabled: true
+
+agentServer:
+  replicas: 1
+  image:
+    repository: k8s-ai-agent-server
+  service:
+    port: 8082
+
+rbac:
+  managedNamespaces: []
+
+mcpServer:
+  replicas: 1
+  image:
+    repository: k8s-ai-mcp-server
+  service:
+    port: 8081
+
+keycloak:
+  enabled: true
+  image: quay.io/keycloak/keycloak:26.0
+  adminUser: admin
+  adminPassword: admin
+  service:
+    port: 8080
+
+postgresql:
+  enabled: true
+  image: postgres:16-alpine
+  database: k8s_ai
+  username: k8s_ai
+  password: k8s_ai
+  service:
+    port: 5432
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  service:
+    port: 6379
+
+ingress:
+  enabled: false

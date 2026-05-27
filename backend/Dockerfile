@@ -1,9 +1,10 @@
 FROM golang:1.26-alpine AS build
 ARG LDFLAGS=""
 WORKDIR /src
-COPY go.mod ./
-COPY . .
-RUN go test ./... && go build -ldflags="${LDFLAGS}" -o /out/backend-api ./cmd/api
+COPY proto /src/proto
+COPY backend /src/backend
+WORKDIR /src/backend
+RUN go env -w GOPROXY=https://goproxy.cn,direct && go build -ldflags="${LDFLAGS}" -o /out/backend-api ./cmd/api
 
 FROM alpine:3.20
 WORKDIR /app

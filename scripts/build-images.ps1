@@ -68,7 +68,7 @@ $servicesToBuild = if ($Services -eq "all") { $allServices } else { $Services.Sp
 $serviceConfig = @{
     "mcp-server" = @{
         Dockerfile = "mcp-server/Dockerfile"
-        Context = "mcp-server"
+        Context = "."
         Image = "k8s-ai-mcp-server"
         LdFlags = $true
     }
@@ -80,7 +80,7 @@ $serviceConfig = @{
     }
     "backend" = @{
         Dockerfile = "backend/Dockerfile"
-        Context = "backend"
+        Context = "."
         Image = "k8s-ai-backend"
         LdFlags = $true
     }

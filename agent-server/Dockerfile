@@ -4,7 +4,7 @@ WORKDIR /src
 COPY proto /src/proto
 COPY agent-server /src/agent-server
 WORKDIR /src/agent-server
-RUN go build -ldflags="${LDFLAGS}" -o /out/agent-server ./cmd/server
+RUN go env -w GOPROXY=https://goproxy.cn,direct && go build -ldflags="${LDFLAGS}" -o /out/agent-server ./cmd/server
 
 FROM alpine:3.20
 COPY --from=build /out/agent-server /usr/local/bin/agent-server

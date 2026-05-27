@@ -21,6 +21,7 @@ backend:
     repository: k8s-ai-backend
   service:
     port: 8080
+    grpcPort: 8082
   encryptionKey: change-me-32-byte-development-key
   storeDriver: postgres
   cacheDriver: redis

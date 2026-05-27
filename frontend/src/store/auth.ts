@@ -89,6 +89,19 @@ export function resetPassword(userId: string, newPassword: string): boolean {
   return true;
 }
 
+export function updateUser(
+  userId: string,
+  fields: { username?: string; role?: "admin" | "operator"; displayName?: string; email?: string }
+): User | null {
+  const user = users.find((u) => u.id === userId);
+  if (!user) return null;
+  if (fields.username !== undefined) user.username = fields.username;
+  if (fields.role !== undefined) user.role = fields.role;
+  if (fields.displayName !== undefined) user.displayName = fields.displayName;
+  if (fields.email !== undefined) user.email = fields.email;
+  return user;
+}
+
 export function getAllModels(): Model[] {
   return [...allModels];
 }

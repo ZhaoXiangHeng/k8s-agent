@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { listUsers, createUser, resetPassword } from "../store/auth";
+import { listUsers, createUser, resetPassword, updateUser } from "../store/auth";
 import type { User } from "../store/auth";
 
 interface UserManagementProps {
@@ -10,6 +10,8 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
   const [users, setUsers] = useState<User[]>(listUsers());
   const [showCreate, setShowCreate] = useState(false);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState({ username: "", role: "operator" as "admin" | "operator", displayName: "", email: "" });
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +54,24 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
     resetPassword(resetTarget.id, resetPasswordValue);
     setResetPasswordValue("");
     setResetTarget(null);
+  };
+
+  const handleEdit = (user: User) => {
+    setMenuOpen(null);
+    setEditTarget(user);
+    setEditForm({
+      username: user.username,
+      role: user.role,
+      displayName: user.displayName,
+      email: user.email,
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editTarget) return;
+    updateUser(editTarget.id, editForm);
+    setEditTarget(null);
+    setUsers(listUsers());
   };
 
   const handleMenuAction = (tab: "models" | "permissions", user: User) => {
@@ -146,6 +166,9 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
                       </button>
                       {menuOpen === u.id && (
                         <div className="contextMenu" ref={menuRef}>
+                          <button onClick={() => handleEdit(u)}>
+                            ✏️ 编辑用户
+                          </button>
                           <button onClick={() => handleMenuAction("models", u)}>
                             🔗 配置模型
                           </button>
@@ -180,6 +203,50 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
             <div className="drawer-actions">
               <button onClick={() => setResetTarget(null)}>取消</button>
               <button onClick={handleReset} className="primary-btn">确认</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit user drawer */}
+      {editTarget && (
+        <div className="drawer-overlay" onClick={() => setEditTarget(null)}>
+          <div className="drawer" onClick={(e) => e.stopPropagation()}>
+            <h3>编辑用户 — {editTarget.username}</h3>
+            <div className="form-group">
+              <label>用户名</label>
+              <input
+                value={editForm.username}
+                onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>角色</label>
+              <select
+                value={editForm.role}
+                onChange={(e) => setEditForm({ ...editForm, role: e.target.value as "admin" | "operator" })}
+              >
+                <option value="operator">Operator</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>显示名称</label>
+              <input
+                value={editForm.displayName}
+                onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>邮箱</label>
+              <input
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+            </div>
+            <div className="drawer-actions">
+              <button onClick={() => setEditTarget(null)}>取消</button>
+              <button onClick={handleSaveEdit} className="primary-btn">保存</button>
             </div>
           </div>
         </div>

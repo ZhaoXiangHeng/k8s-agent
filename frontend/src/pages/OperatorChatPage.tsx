@@ -153,22 +153,34 @@ export function OperatorChatPage({ auth, models }: { auth: ApiAuth; models: Mode
         </div>
       </header>
 
-      <section className="panel chatMessages">
-        {chat.messages.length === 0 ? <EmptyState title="输入自然语言运维指令开始巡检" /> : null}
-        {chat.messages.map((message) => (
-          <div key={message.id} className={`message ${message.role}`}>
-            {message.content}
-            {message.pending ? <span className="pending"> 分析中</span> : null}
-            {message.resources?.length ? <ResourceTable resources={message.resources} /> : null}
-          </div>
-        ))}
+      <div className="chatPanel">
+        <div className="chatMessages">
+          {chat.messages.length === 0 ? <EmptyState title="输入自然语言运维指令开始巡检" /> : null}
+          {chat.messages.map((message) => (
+            <div key={message.id} className={`message ${message.role}`}>
+              {message.content}
+              {message.pending ? <span className="pending">分析中...</span> : null}
+              {message.resources?.length ? <ResourceTable resources={message.resources} /> : null}
+            </div>
+          ))}
+        </div>
         <div className="composer">
-          <textarea value={content} onChange={(event) => setContent(event.target.value)} />
+          <textarea
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="输入自然语言运维指令..."
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (!chat.sending && selectedModel) chat.send(content, selectedModel);
+              }
+            }}
+          />
           <button disabled={chat.sending || !selectedModel} onClick={() => void chat.send(content, selectedModel)}>
             {chat.sending ? "发送中" : "发送"}
           </button>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

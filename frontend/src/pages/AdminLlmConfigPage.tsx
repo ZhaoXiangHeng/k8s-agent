@@ -21,6 +21,12 @@ export function AdminLlmConfigPage({
   onDeleteModel: (id: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<"providers" | "models">("providers");
+  const [preselectedProviderId, setPreselectedProviderId] = useState<string>("");
+
+  function handleEditModels(providerId: string) {
+    setPreselectedProviderId(providerId);
+    setTab("models");
+  }
 
   return (
     <div className="workspace">
@@ -35,9 +41,23 @@ export function AdminLlmConfigPage({
         </div>
       </header>
       {tab === "providers" ? (
-        <AdminProvidersPage providers={providers} onCreate={onCreateProvider} onUpdate={onUpdateProvider} embedded />
+        <AdminProvidersPage
+          providers={providers}
+          onCreate={onCreateProvider}
+          onUpdate={onUpdateProvider}
+          onEditModels={handleEditModels}
+          embedded
+        />
       ) : (
-        <AdminModelsPage models={models} providers={providers} onCreate={onCreateModel} onUpdate={onUpdateModel} onDelete={onDeleteModel} embedded />
+        <AdminModelsPage
+          models={models}
+          providers={providers}
+          onCreate={onCreateModel}
+          onUpdate={onUpdateModel}
+          onDelete={onDeleteModel}
+          preselectedProviderId={preselectedProviderId}
+          embedded
+        />
       )}
     </div>
   );

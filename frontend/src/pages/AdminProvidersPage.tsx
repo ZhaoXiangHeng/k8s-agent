@@ -15,19 +15,49 @@ const initialProvider: CreateProviderRequest = {
 export function AdminProvidersPage({
   providers,
   onCreate,
-  onUpdate
-  , embedded = false
+  onUpdate,
+  onEditModels,
+  embedded = false
 }: {
   providers: Provider[];
   onCreate: (body: CreateProviderRequest) => Promise<void>;
   onUpdate: (id: string, body: Partial<CreateProviderRequest>) => Promise<void>;
+  onEditModels?: (providerId: string) => void;
   embedded?: boolean;
 }) {
   const [form, setForm] = useState<CreateProviderRequest>(initialProvider);
+  const [editTarget, setEditTarget] = useState<Provider | null>(null);
+  const [editForm, setEditForm] = useState<CreateProviderRequest>(initialProvider);
 
   async function submit() {
     await onCreate(form);
     setForm(initialProvider);
+  }
+
+  function openEdit(provider: Provider) {
+    setEditTarget(provider);
+    setEditForm({
+      name: provider.name,
+      protocol: provider.protocol as "openai" | "anthropic",
+      baseUrl: provider.baseUrl,
+      apiKey: "",
+      enabled: provider.enabled,
+    });
+  }
+
+  async function saveEdit() {
+    if (!editTarget) return;
+    const updateFields: Partial<CreateProviderRequest> = {
+      name: editForm.name,
+      protocol: editForm.protocol,
+      baseUrl: editForm.baseUrl,
+      enabled: editForm.enabled,
+    };
+    if (editForm.apiKey) {
+      updateFields.apiKey = editForm.apiKey;
+    }
+    await onUpdate(editTarget.id, updateFields);
+    setEditTarget(null);
   }
 
   return (
@@ -53,13 +83,62 @@ export function AdminProvidersPage({
                   <td>{provider.baseUrl}</td>
                   <td>{provider.apiKeyConfigured ? "已配置" : "未配置"}</td>
                   <td><StatusBadge active={provider.enabled} text={provider.enabled ? "启用" : "停用"} /></td>
-                  <td><button onClick={() => void onUpdate(provider.id, { enabled: !provider.enabled })}>{provider.enabled ? "停用" : "启用"}</button></td>
+                  <td>
+                    <div className="rowActions">
+                      <button onClick={() => openEdit(provider)}>编辑</button>
+                      <button onClick={() => void onUpdate(provider.id, { enabled: !provider.enabled })}>
+                        {provider.enabled ? "停用" : "启用"}
+                      </button>
+                      {onEditModels && (
+                        <button onClick={() => onEditModels(provider.id)}>编辑模型</button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </DataTable>
         )}
       </section>
+
+      {/* Edit provider drawer */}
+      {editTarget && (
+        <div className="drawerOverlay" onClick={() => setEditTarget(null)}>
+          <div className="drawerPanel" onClick={(e) => e.stopPropagation()}>
+            <header className="drawerHeader">
+              <h3>编辑 Provider — {editTarget.name}</h3>
+              <button className="iconButton" onClick={() => setEditTarget(null)}>×</button>
+            </header>
+            <label className="formRow">
+              名称
+              <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+            </label>
+            <label className="formRow">
+              协议
+              <select value={editForm.protocol} onChange={(e) => setEditForm({ ...editForm, protocol: e.target.value as "openai" | "anthropic" })}>
+                <option value="openai">openai</option>
+                <option value="anthropic">anthropic</option>
+              </select>
+            </label>
+            <label className="formRow">
+              Base URL
+              <input value={editForm.baseUrl} onChange={(e) => setEditForm({ ...editForm, baseUrl: e.target.value })} />
+            </label>
+            <label className="formRow">
+              API Key（留空不修改）
+              <input type="password" value={editForm.apiKey} onChange={(e) => setEditForm({ ...editForm, apiKey: e.target.value })} placeholder="留空则不修改" />
+            </label>
+            <label className="checkRow">
+              <input type="checkbox" checked={editForm.enabled} onChange={(e) => setEditForm({ ...editForm, enabled: e.target.checked })} />
+              启用
+            </label>
+            <div className="actions">
+              <button onClick={() => setEditTarget(null)}>取消</button>
+              <button onClick={() => void saveEdit()}>保存</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CreateModelRequest, Model, Provider } from "../domain/llm";
 import { DataTable } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
@@ -19,6 +19,7 @@ export function AdminModelsPage({
   onCreate,
   onUpdate,
   onDelete,
+  preselectedProviderId,
   embedded = false
 }: {
   models: Model[];
@@ -26,18 +27,37 @@ export function AdminModelsPage({
   onCreate: (body: CreateModelRequest) => Promise<void>;
   onUpdate: (id: string, body: Partial<CreateModelRequest>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  preselectedProviderId?: string;
   embedded?: boolean;
 }) {
-  const [form, setForm] = useState<CreateModelRequest>(initialModel);
+  const [form, setForm] = useState<CreateModelRequest>(() =>
+    preselectedProviderId
+      ? { ...initialModel, providerId: preselectedProviderId }
+      : initialModel
+  );
+
+  useEffect(() => {
+    if (preselectedProviderId) {
+      setForm((prev) => ({ ...prev, providerId: preselectedProviderId }));
+    }
+  }, [preselectedProviderId]);
 
   async function submit() {
     await onCreate({ ...form, providerId: form.providerId || providers[0]?.id || "" });
     setForm(initialModel);
   }
 
+  const preselectedProvider = providers.find((p) => p.id === preselectedProviderId);
+
   return (
     <div className={embedded ? "embeddedPage" : "workspace"}>
       {embedded ? null : <header className="toolbar"><h2>LLM Model</h2></header>}
+      {preselectedProvider && (
+        <div className="notice info">
+          当前筛选 Provider：<strong>{preselectedProvider.name}</strong>
+          {" "}({preselectedProvider.protocol})
+        </div>
+      )}
       <section className="panel formGrid">
         <label className="formRow">Provider<select value={form.providerId || providers[0]?.id || ""} onChange={(e) => setForm({ ...form, providerId: e.target.value })}>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
         <label className="formRow">模型名<input value={form.modelName} onChange={(e) => setForm({ ...form, modelName: e.target.value })} /></label>
@@ -53,10 +73,10 @@ export function AdminModelsPage({
             <thead><tr><th>模型</th><th>显示名</th><th>Provider</th><th>工具</th><th>流式</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               {models.map((model) => (
-                <tr key={model.id}>
+                <tr key={model.id} className={preselectedProviderId && model.providerId === preselectedProviderId ? "selectedRow" : ""}>
                   <td>{model.modelName}</td>
                   <td>{model.displayName || model.modelName}</td>
-                  <td>{model.providerId}</td>
+                  <td>{providers.find((p) => p.id === model.providerId)?.name || model.providerId}</td>
                   <td><StatusBadge active={model.supportsTools} text={model.supportsTools ? "支持" : "不支持"} /></td>
                   <td><StatusBadge active={model.supportsStreaming} text={model.supportsStreaming ? "支持" : "不支持"} /></td>
                   <td><StatusBadge active={model.enabled} text={model.enabled ? "启用" : "停用"} /></td>

@@ -7,7 +7,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 type Client struct {
@@ -51,13 +50,16 @@ type DeploymentInfo struct {
 	Available  int32  `json:"availableReplicas"`
 }
 
-func NewClient(kubeconfig string) (*Client, error) {
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			return nil, err
-		}
+func NewClientFromSA(saToken, apiServer, namespace, caCert string) (*Client, error) {
+	config := &rest.Config{
+		Host:        apiServer,
+		BearerToken: saToken,
+		TLSClientConfig: rest.TLSClientConfig{
+			CAData: []byte(caCert),
+		},
+	}
+	if caCert == "" {
+		config.TLSClientConfig = rest.TLSClientConfig{Insecure: true}
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {

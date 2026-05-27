@@ -6,22 +6,39 @@ import (
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"k8s-ai-ops/mcp-server/internal/identity"
 	"k8s-ai-ops/mcp-server/internal/k8s"
 )
 
 func ListPodsTool() mcp.Tool {
 	return mcp.NewTool("list_pods",
 		mcp.WithDescription("List Kubernetes pods with optional namespace and label filters"),
+		mcp.WithString("user_id", mcp.Required(), mcp.Description("User ID for Kubernetes authentication")),
 		mcp.WithString("namespace", mcp.Description("Namespace to list pods from")),
 		mcp.WithString("label_selector", mcp.Description("Kubernetes label selector to filter pods")),
 	)
 }
 
-func HandleListPods(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func HandleListPods(idClient *identity.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		userID, err := req.RequireString("user_id")
+		if err != nil {
+			return mcp.NewToolResultError("user_id is required"), nil
+		}
+
+		sa, err := idClient.GetServiceAccount(ctx, userID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get service account: %v", err)), nil
+		}
+
+		k8sClient, err := k8s.NewClientFromSA(sa.Token, sa.ApiServer, sa.Namespace, sa.CaCert)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to create k8s client: %v", err)), nil
+		}
+
 		namespace := req.GetString("namespace", "")
 		labelSelector := req.GetString("label_selector", "")
-		pods, err := client.ListPods(ctx, namespace, labelSelector)
+		pods, err := k8sClient.ListPods(ctx, namespace, labelSelector)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to list pods: %v", err)), nil
 		}
@@ -36,13 +53,29 @@ func HandleListPods(client *k8s.Client) func(ctx context.Context, req mcp.CallTo
 func GetPodTool() mcp.Tool {
 	return mcp.NewTool("get_pod",
 		mcp.WithDescription("Get detailed information about a specific Kubernetes pod"),
+		mcp.WithString("user_id", mcp.Required(), mcp.Description("User ID for Kubernetes authentication")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Pod namespace")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Pod name")),
 	)
 }
 
-func HandleGetPod(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func HandleGetPod(idClient *identity.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		userID, err := req.RequireString("user_id")
+		if err != nil {
+			return mcp.NewToolResultError("user_id is required"), nil
+		}
+
+		sa, err := idClient.GetServiceAccount(ctx, userID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get service account: %v", err)), nil
+		}
+
+		k8sClient, err := k8s.NewClientFromSA(sa.Token, sa.ApiServer, sa.Namespace, sa.CaCert)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to create k8s client: %v", err)), nil
+		}
+
 		namespace, err := req.RequireString("namespace")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -51,7 +84,7 @@ func HandleGetPod(client *k8s.Client) func(ctx context.Context, req mcp.CallTool
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		pod, err := client.GetPod(ctx, namespace, name)
+		pod, err := k8sClient.GetPod(ctx, namespace, name)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to get pod: %v", err)), nil
 		}
@@ -66,6 +99,7 @@ func HandleGetPod(client *k8s.Client) func(ctx context.Context, req mcp.CallTool
 func GetPodLogsTool() mcp.Tool {
 	return mcp.NewTool("get_pod_logs",
 		mcp.WithDescription("Get logs from a Kubernetes pod container"),
+		mcp.WithString("user_id", mcp.Required(), mcp.Description("User ID for Kubernetes authentication")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Pod namespace")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Pod name")),
 		mcp.WithString("container", mcp.Description("Container name (uses first container if not specified)")),
@@ -73,8 +107,23 @@ func GetPodLogsTool() mcp.Tool {
 	)
 }
 
-func HandleGetPodLogs(client *k8s.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func HandleGetPodLogs(idClient *identity.Client) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		userID, err := req.RequireString("user_id")
+		if err != nil {
+			return mcp.NewToolResultError("user_id is required"), nil
+		}
+
+		sa, err := idClient.GetServiceAccount(ctx, userID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get service account: %v", err)), nil
+		}
+
+		k8sClient, err := k8s.NewClientFromSA(sa.Token, sa.ApiServer, sa.Namespace, sa.CaCert)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to create k8s client: %v", err)), nil
+		}
+
 		namespace, err := req.RequireString("namespace")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -85,7 +134,7 @@ func HandleGetPodLogs(client *k8s.Client) func(ctx context.Context, req mcp.Call
 		}
 		container := req.GetString("container", "")
 		tailLines := int64(req.GetFloat("tail_lines", 50))
-		logs, err := client.GetPodLogs(ctx, namespace, name, container, tailLines)
+		logs, err := k8sClient.GetPodLogs(ctx, namespace, name, container, tailLines)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to get pod logs: %v", err)), nil
 		}

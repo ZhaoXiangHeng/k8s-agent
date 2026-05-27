@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
 	"github.com/mark3labs/mcp-go/server"
 	"k8s-ai-ops/mcp-server/internal/handler"
-	"k8s-ai-ops/mcp-server/internal/k8s"
+	"k8s-ai-ops/mcp-server/internal/identity"
 )
 
 func main() {
@@ -14,25 +15,29 @@ func main() {
 	if addr == "" {
 		addr = ":8081"
 	}
-	kubeconfig := os.Getenv("KUBECONFIG")
 
-	k8sClient, err := k8s.NewClient(kubeconfig)
+	identityAddr := os.Getenv("IDENTITY_SERVER_ADDR")
+	if identityAddr == "" {
+		identityAddr = "backend:8082"
+	}
+
+	idClient, err := identity.NewClient(context.Background(), identityAddr)
 	if err != nil {
-		log.Fatalf("level=ERROR component=mcp-server event=k8s_client_create_failed error=%q", err)
+		log.Fatalf("level=ERROR component=mcp-server event=identity_connect_failed addr=%s error=%q", identityAddr, err)
 	}
 
 	s := server.NewMCPServer("k8s-mcp-server", "1.0.0")
 
-	s.AddTool(handler.ListNamespacesTool(), handler.HandleListNamespaces(k8sClient))
-	s.AddTool(handler.ListPodsTool(), handler.HandleListPods(k8sClient))
-	s.AddTool(handler.GetPodTool(), handler.HandleGetPod(k8sClient))
-	s.AddTool(handler.GetPodLogsTool(), handler.HandleGetPodLogs(k8sClient))
-	s.AddTool(handler.GetPodEventsTool(), handler.HandleGetPodEvents(k8sClient))
-	s.AddTool(handler.ListDeploymentsTool(), handler.HandleListDeployments(k8sClient))
-	s.AddTool(handler.RestartDeploymentTool(), handler.HandleRestartDeployment(k8sClient))
+	s.AddTool(handler.ListNamespacesTool(), handler.HandleListNamespaces(idClient))
+	s.AddTool(handler.ListPodsTool(), handler.HandleListPods(idClient))
+	s.AddTool(handler.GetPodTool(), handler.HandleGetPod(idClient))
+	s.AddTool(handler.GetPodLogsTool(), handler.HandleGetPodLogs(idClient))
+	s.AddTool(handler.GetPodEventsTool(), handler.HandleGetPodEvents(idClient))
+	s.AddTool(handler.ListDeploymentsTool(), handler.HandleListDeployments(idClient))
+	s.AddTool(handler.RestartDeploymentTool(), handler.HandleRestartDeployment(idClient))
 
 	mcpServer := server.NewSSEServer(s)
-	log.Printf("level=INFO component=mcp-server event=server_start addr=%s protocol=mcp+sse", addr)
+	log.Printf("level=INFO component=mcp-server event=server_start addr=%s identity_addr=%s protocol=mcp+sse", addr, identityAddr)
 	if err := mcpServer.Start(addr); err != nil {
 		log.Fatalf("level=ERROR component=mcp-server event=server_exit error=%q", err)
 	}

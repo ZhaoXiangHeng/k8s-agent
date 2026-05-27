@@ -13,6 +13,7 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({ username: "", role: "operator" as "admin" | "operator", displayName: "", email: "", notes: "" });
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Create form state
@@ -163,14 +164,23 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
                         className="iconButton"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setMenuOpen(menuOpen === u.id ? null : u.id);
+                          if (menuOpen === u.id) {
+                            setMenuOpen(null);
+                          } else {
+                            setMenuPos({ top: e.clientY, left: e.clientX - 140 });
+                            setMenuOpen(u.id);
+                          }
                         }}
                         title="更多操作"
                       >
                         ···
                       </button>
                       {menuOpen === u.id && (
-                        <div className="contextMenu" ref={menuRef}>
+                        <div
+                          className="contextMenu"
+                          ref={menuRef}
+                          style={{ top: menuPos.top, left: menuPos.left }}
+                        >
                           <button onClick={() => handleEdit(u)}>
                             ✏️ 编辑用户
                           </button>

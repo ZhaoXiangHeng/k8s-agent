@@ -76,7 +76,6 @@ export default function Sidebar({
   return (
     <aside
       className={`sidebar${collapsed ? " collapsed" : ""}`}
-      style={{ width: collapsed ? 64 : 280, transition: "width 0.2s ease" }}
     >
       <div className="sidebar-brand">
         {collapsed ? (

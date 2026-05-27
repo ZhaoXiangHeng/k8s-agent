@@ -5,3 +5,6 @@ dist/
 image-tars/*.tar
 .worktrees/
 .tools/
+*.exe
+__pycache__/
+.claude/skills/*/.tmp/

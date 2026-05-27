@@ -4,10 +4,9 @@
 
 Agent Server 不持久化 Chat 数据。Backend 需要保存 Chat Session、Chat Message、工具事件和结构化资源结果，并在下一轮请求中组装：
 
-- `messages`：最近对话窗口。
-- `runtimeContext.allowedNamespaces`：当前权限摘要。
-- `runtimeContext.recentResources`：最近几轮返回的轻量资源引用，例如 Pod namespace/name/status。
-- `tools`：本轮允许调用的工具 allowlist。
+- `context_messages`：最近对话窗口，不包含当前输入。
+- `current_input`：当前用户本轮输入。
+- `permissions`：当前用户权限快照。Agent Server 只把它作为提示上下文，实际工具能力来自内置 MCP Server 工具发现和 MCP Server 的再次权限校验。
 
 权限变化后，Backend 必须重新筛选历史上下文和最近资源引用。
 
@@ -16,7 +15,8 @@ Agent Server 不持久化 Chat 数据。Backend 需要保存 Chat Session、Chat
 ```mermaid
 erDiagram
   users ||--o{ k8s_permissions : owns
-  users ||--o{ k8s_service_accounts : binds
+  users ||--o{ service_account_bindings : binds
+  users ||--|| service_account_tokens : uses
   users ||--o{ user_llm_bindings : uses
   llm_providers ||--o{ llm_models : contains
   llm_models ||--o{ user_llm_bindings : assigned
@@ -77,7 +77,7 @@ created_at
 updated_at
 ```
 
-### k8s_service_accounts
+### service_account_bindings
 
 保存操作员和 Kubernetes ServiceAccount 的绑定关系。
 
@@ -85,9 +85,23 @@ updated_at
 id
 user_id
 namespace
-service_account_name
-token_secret_name
+service_account
 status
+created_at
+updated_at
+```
+
+### service_account_tokens
+
+保存 IdentityService 返回给 MCP Server 的用户级 Kubernetes ServiceAccount 运行时凭据。`token_ciphertext` 存储加密后的 token；开发环境未配置 `ENCRYPTION_KEY` 时会退回明文存储，仅允许本地调试使用。
+
+```text
+user_id
+service_account
+namespace
+token_ciphertext
+ca_cert
+api_server
 created_at
 updated_at
 ```
@@ -215,16 +229,22 @@ created_at
 
 ## 当前实现状态
 
-当前代码中已经有两种 Store 实现：
+当前 Backend 使用 `backend/internal/infra/postgres.DataStore` 作为 PostgreSQL 仓储实现，并通过 GORM AutoMigrate 自动建表。
 
-- `backend/internal/store.MemoryStore`：默认内存实现，用于快速启动和单元测试。
-- `backend/internal/store.PostgresStore`：真实 PostgreSQL 实现，支持 schema 初始化、Demo 用户初始化、用户/权限/LLM/审计持久化。
+已实现的表/实体：
 
-Backend 通过 `STORE_DRIVER` 选择实现：
+- `users`：平台用户映射（含 `username`、`display_name`、`email`、`role`、`status`）
+- `k8s_permissions`：业务权限（`namespace + apiGroup + resource + verbs_json`）
+- `service_account_bindings`：操作员与 K8s ServiceAccount 绑定
+- `service_account_tokens`：用户级 ServiceAccount 运行时凭据，`token_ciphertext` 通过 `ENCRYPTION_KEY` 派生密钥加密
+- `llm_providers`：LLM Provider 配置（`protocol`、`base_url`、`api_key_ciphertext`）
+- `llm_models`：Provider 下可用模型（含 `supports_tools`、`supports_streaming` 标志）
+- `user_llm_bindings`：用户与模型绑定（含 `is_default`）
+- `chat_sessions`：Chat 会话元数据
+- `chat_messages`：用户/助手/工具消息（含 `tool_name`、`tool_args_json`、`tool_result_json`）
+- `audit_logs`：审计日志（含脱敏请求/响应）
 
-```text
-STORE_DRIVER=memory
-STORE_DRIVER=postgres
-```
+尚未实现：
 
-后续需要补充生产级 migration 版本管理，但 HTTP API 行为应保持不变。
+- 版本化 migration 脚本（当前依赖 GORM AutoMigrate）
+- Redis 业务缓存（会话缓存、权限缓存）和流式状态存储

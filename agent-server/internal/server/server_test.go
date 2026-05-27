@@ -36,8 +36,8 @@ func TestAgentServiceRunStreamSendsEvents(t *testing.T) {
 
 	client := agentv1.NewAgentServiceClient(conn)
 	stream, err := client.RunStream(context.Background(), &agentv1.AgentRunRequest{
-		Message: "check dev",
-		RuntimeContext: &agentv1.RuntimeContext{CurrentUser: "operator-a"},
+		CurrentInput: "check dev",
+		User:         &agentv1.UserContext{Username: "operator-a"},
 	})
 	if err != nil {
 		t.Fatal(err)

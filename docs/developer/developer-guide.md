@@ -4,13 +4,51 @@
 
 ```text
 proto/
-  agent/v1/agent.proto
+  agent/v1/agent.proto       # AgentService + StreamEvent 定义
   agent/v1/agent.pb.go
   agent/v1/agent_grpc.pb.go
 agent-server/
+  cmd/server/main.go          # 入口，初始化 Eino + MCP 客户端 + gRPC server
+  internal/
+    eino/
+      config.go               # Eino ChatModel 和 MCP 工具配置
+      runner.go               # ReAct agent runner，实现 RunStream
+      runner_test.go
+      llm/
+        factory.go            # LLM ChatModel 工厂（openai/anthropic）
+      mcp/
+        client.go             # MCP Server 客户端，发现并注册工具
+    server/
+      server.go               # gRPC 服务实现
+      server_test.go
+      mock_runner.go
+```
+
+Backend 工程
+
+```text
+backend/
+  cmd/api/main.go
+  internal/
+    http/                     # HTTP 路由、中间件、SSE 流式
+    chat/                     # Chat 会话编排、消息管理
+    agent/                    # gRPC AgentService 客户端
+    auth/                     # 认证授权（Keycloak 集成）
+    store/                    # 数据访问层（PostgreSQL / 内存）
+    k8s/                      # Kubernetes RBAC 管理
+    config/                   # 配置加载
+    audit/                    # 审计日志
+```
+
+MCP Server 工程
+
+```text
+mcp-server/
   cmd/server/main.go
-  internal/eino/
-  internal/server/
+  internal/
+    handler/                  # MCP 工具处理器（pods/deployments/events/namespaces/logging）
+    k8s/                      # K8s client 工厂（支持 per-user ServiceAccount）
+    identity/                 # gRPC IdentityService 客户端
 ```
 
 `proto/agent/v1/agent.proto` 是 Backend 与 Agent Server 之间 gRPC 契约的唯一来源。修改 proto 后必须重新生成 Go 代码并提交生成物。
@@ -45,15 +83,16 @@ docs/                    企业级分层文档
 flowchart LR
   HTTP["internal/http"] --> Auth["internal/auth"]
   HTTP --> Chat["internal/chat"]
+  HTTP --> AgentClient["internal/agent"]
   HTTP --> Store["internal/store"]
-  Chat --> LLM["internal/llm"]
-  Chat --> MCP["internal/mcpclient"]
   Chat --> Audit["internal/audit"]
+  AgentClient --> AgentServer["Agent Server (gRPC)"]
   Store --> DB["PostgreSQL"]
   Auth --> Keycloak["Keycloak"]
-  MCP --> MCPServer["MCP Server"]
   K8S["internal/k8s"] --> APIServer["Kubernetes API"]
 ```
+
+Backend 不再直接调用 LLM 或 MCP Server。Chat 请求通过 `internal/agent` 的 gRPC 客户端调用 Agent Server 的 `AgentService.RunStream`（server-streaming），由 Agent Server 负责 LLM 调用和 MCP 工具执行。
 
 当前代码是骨架阶段，已实现：
 
@@ -79,8 +118,9 @@ flowchart LR
 - Keycloak Admin API 创建用户。
 - PostgreSQL 生产级 migration 工具和版本管理。
 - Redis 业务缓存键设计和流式状态接入。
-- MCP Client 和真实 LLM Provider 调用。
+- gRPC Agent Client 与 Agent Server 的真实对接（当前使用 mock runner）。
 - LLM API Key 的生产级加密和解密。
+- Agent Server 的 Skills 系统按需加载机制。
 
 ## Store 边界
 
@@ -144,9 +184,9 @@ go run ./cmd/api
 
 1. 接入真实 PostgreSQL migration 和 repository。
 2. 接入 Keycloak JWT 校验和 Admin API。
-3. 实现 MCP Client。
-4. 实现 OpenAI/Anthropic adapter。
-5. 将前端静态页面接入真实 API。
+3. 接入 gRPC Agent Client，对接 Agent Server 的 RunStream。
+4. 完善 Agent Server 的 MCP 工具注册和 Skills 加载。
+5. 将前端静态页面接入真实 API 和 SSE 流式事件。
 
 ## MCP Server 扩展方式
 
@@ -159,15 +199,69 @@ go run ./cmd/api
 5. 更新 [API 设计](../reference/api-design.md) 或相关接口文档。
 6. 增加单元测试，覆盖正常调用和越权拒绝。
 
-## LLM Provider 扩展方式
+## Agent Server 开发
 
-新增 Provider 协议时需要：
+### Eino ADK 架构
 
-1. 在 `backend/internal/llm` 增加协议类型。
-2. 实现统一 Chat Request/Response 转换。
-3. 实现工具调用解析。
-4. 增加 Provider 配置字段校验。
-5. 更新 LLM 管理 API 和文档。
+Agent Server 使用 CloudWeGo Eino 框架的 ADK（Agent Development Kit）实现 ReAct agent loop：
+
+```mermaid
+flowchart TD
+  RunStream["gRPC RunStream 入口"] --> Build["构建 ChatModel + MCP Tools"]
+  Build --> Loop["ReAct Agent Loop"]
+  Loop --> LLM["调用 LLM (openai/anthropic)"]
+  LLM --> Check{"需要工具调用?"}
+  Check -- "是" --> Tool["执行 MCP 工具"]
+  Tool --> Result["返回工具结果给 LLM"]
+  Result --> Loop
+  Check -- "否" --> Stream["流式返回 StreamEvent"]
+  Stream --> Complete["Complete 事件，结束"]
+```
+
+### Skills 系统
+
+Skills 是存储在 `SKILLS_DIR` 目录下的运维知识单元。每个 skill 是一个子目录，包含：
+
+- `SKILL.md`：技能定义文件，描述技能用途、参数和用法
+- 可选脚本、模板等辅助文件
+
+Skills 通过渐进式披露机制按需加载：
+1. Agent 启动时，加载 skill 元数据索引（名称、描述）
+2. ReAct loop 中，当 LLM 判断需要使用某 skill 时，动态加载对应 `SKILL.md` 内容
+3. Skill 定义中包含的 MCP 工具映射触发实际 K8s 操作
+
+### 流式事件（StreamEvent）
+
+Agent Server 通过 gRPC server-streaming 向 Backend 发送以下事件：
+
+| 事件类型 | 说明 | 典型 payload |
+| --- | --- | --- |
+| Thinking | Agent 的思考过程 | 自然语言推理文本 |
+| ToolCall | LLM 决定调用工具 | 工具名称、参数 JSON |
+| ToolResult | 工具执行完成 | 工具返回的结构化数据 |
+| Resource | 引用的 K8s 资源 | namespace/name/kind 引用 |
+| Complete | Agent loop 完成 | 最终总结文本 |
+| Error | 发生错误 | 错误码和消息 |
+
+### 添加新 MCP 工具
+
+在 `agent-server/internal/eino/mcp/` 中，MCP 工具通过 MCP Server 自动发现并注册到 Eino 工具集。新增工具需要：
+
+1. 在 `mcp-server/internal/handler/` 中实现工具处理器。
+2. 在 MCP Server 中注册工具端点。
+3. 在 Backend 权限映射中登记工具对应的 `namespace/resource/verb`。
+4. 更新 [Chat 与 MCP 流程](../architecture/chat-mcp-flow.md) 的工具表。
+5. 增加单元测试，覆盖正常调用和越权拒绝。
+
+### LLM Provider 扩展方式
+
+新增 Provider 协议时需要在 Agent Server 中处理：
+
+1. 在 `agent-server/internal/eino/llm/factory.go` 增加协议类型支持。
+2. 实现 ChatModel 创建（openai/anthropic 等）。
+3. 利用 Eino 框架统一 Chat Request/Response 转换和工具调用解析。
+4. 增加 Provider 配置字段校验（Backend 管理 API Key 和 base_url）。
+5. 更新 Backend 的 LLM 管理 API 和文档。
 6. 增加 mock 测试，避免依赖真实外部模型。
 
 ## 权限开发规则

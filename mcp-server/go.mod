@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/mark3labs/mcp-go v0.54.1
+	github.com/sirupsen/logrus v1.9.3
 	google.golang.org/grpc v1.76.0
 	k8s-ai-ops/proto v0.0.0
 	k8s.io/api v0.34.2

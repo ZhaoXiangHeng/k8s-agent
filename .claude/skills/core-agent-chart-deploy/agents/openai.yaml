@@ -1,0 +1,4 @@
+interface:
+  display_name: "Core Agent Chart Deploy"
+  short_description: "将 core_agent_service_chart 传到 124.174.9.249 并执行 deploy.sh 安装。"
+  default_prompt: "Use this skill to package core_agent_service_chart, copy it to 124.174.9.249, and run scripts/deploy.sh with the configured PostgreSQL, RabbitMQ, and KWeaver parameters."

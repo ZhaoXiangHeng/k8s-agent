@@ -53,39 +53,45 @@ sequenceDiagram
   Operator->>UI: 输入多轮 Chat 问题
   UI->>API: POST /api/operator/chat/sessions/:id/messages
   API->>API: 读取历史、权限和最近资源引用
-  API->>Agent: gRPC AgentService.Run(messages, runtimeContext, tools)
-  Agent->>MCP: 调用授权工具
+  API->>Agent: gRPC AgentService.RunStream(context_messages, current_input, permissions)
+  Agent->>MCP: 调用内置 MCP 工具
   Agent-->>API: 返回总结、资源结果和工具事件
   API->>API: 保存消息和审计
   API-->>UI: 返回总结和结构化资源
 ```
 
-当操作员追问“看看这个 Pod 的日志”时，Backend 从最近资源引用中填充 `runtimeContext.recentResources`，Agent Server 用它理解指代，但实际 `get_pod_logs` 仍必须通过工具 allowlist 和 MCP 权限校验。
+当操作员追问“看看这个 Pod 的日志”时，Backend 通过裁剪后的 `context_messages` 保留必要对话上下文，Agent Server 用它理解本轮 `current_input`，但实际 `get_pod_logs` 仍必须通过 MCP Server 权限校验。
+
+以下是 Chat 巡检的详细流程，Backend 通过 gRPC RunStream 委托 Agent Server 执行 ReAct agent loop，不直接调用 LLM 或 MCP Server：
 
 ```mermaid
 sequenceDiagram
   actor Operator as 操作员
   participant UI as Operator Console
   participant API as Backend API
+  participant DB as PostgreSQL
+  participant Agent as Agent Server
   participant LLM as LLM Provider
   participant MCP as MCP Server
   participant K8S as Kubernetes API
-  participant DB as PostgreSQL
 
   Operator->>UI: 输入自然语言巡检请求
   UI->>API: POST /api/operator/chat/sessions/:id/messages
-  API->>DB: 读取用户权限和可用模型
-  API->>LLM: 发送受权限约束的 prompt
-  LLM-->>API: 请求 list_pods 工具
-  API->>API: 校验 namespace/resource/verb
-  API->>MCP: 调用 list_pods
+  API->>DB: 读取用户权限、可用模型、对话历史
+  API->>API: 构建 AgentRunRequest（context_messages + current_input + permissions）
+  API->>Agent: gRPC AgentService.RunStream (server-streaming)
+  Agent->>LLM: Eino ReAct agent 发送受权限约束的 prompt
+  LLM-->>Agent: 请求 list_pods 工具
+  Agent->>Agent: 校验 namespace/resource/verb
+  Agent->>MCP: 调用 list_pods 工具
   MCP->>K8S: 使用操作员 ServiceAccount 查询 Pod
   K8S-->>MCP: 返回 Pod 列表
-  MCP-->>API: 返回结构化工具结果
-  API->>LLM: 发送工具结果生成总结
-  LLM-->>API: 返回 AI 总结
-  API->>DB: 保存 Chat 和审计日志
-  API-->>UI: 返回总结和异常 Pod 表格
+  MCP-->>Agent: 返回结构化工具结果
+  Agent->>LLM: 发送工具结果生成总结
+  LLM-->>Agent: 返回 AI 总结
+  Agent-->>API: 流式返回 StreamEvent（Thinking/ToolCall/ToolResult/Complete）
+  API-->>UI: SSE 流式返回事件
+  API->>DB: 保存 Chat 消息和审计日志
 ```
 
 ## 越权请求拦截

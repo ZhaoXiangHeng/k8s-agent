@@ -11,7 +11,7 @@ flowchart LR
   UI --> API
   API --> KC["Keycloak"]
   API --> DB["PostgreSQL / Redis"]
-  API -->|"gRPC / AgentService.Run"| Agent["Agent Server / Eino"]
+  API -->|"gRPC / AgentService.RunStream"| Agent["Agent Server / Eino"]
   Agent --> LLM["OpenAI / Anthropic"]
   Agent --> MCP["MCP Server"]
   MCP --> K8S["Kubernetes API"]
@@ -23,8 +23,8 @@ flowchart LR
 - 管理员创建用户、分配 Kubernetes namespace 级权限、管理 LLM。
 - 操作员通过 Chat 巡检授权范围内的异常 Pod。
 - Backend 管理 Chat 历史、权限、审计，并通过 gRPC 调用 Agent Server。
-- Agent Server 使用 Eino 执行单轮 agent loop，消费 Backend 传入的 `messages` 和 `runtimeContext`。
-- Backend 和 MCP Server 在 LLM 工具调用前后做双层权限校验。
+- Agent Server 使用 Eino 执行单轮 agent loop，消费 Backend 传入的 `context_messages`、`current_input` 和 `permissions`。
+- Backend 负责模型授权和上下文筛选，MCP Server 在工具执行前做 Kubernetes 业务权限校验。
 - Backend 可将管理员配置的 namespace 级权限同步为 Kubernetes ServiceAccount、Role、RoleBinding。
 - MCP Server 使用操作员 ServiceAccount 调用 Kubernetes。
 - Helm 支持本地 tar 镜像包和 registry 镜像两种部署模式。

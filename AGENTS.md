@@ -37,6 +37,18 @@
 - 只在复杂逻辑、权限边界、安全边界、错误处理原因不明显时添加注释。
 - 不添加解释显而易见代码的空洞注释。
 
+## 代码架构与设计
+
+- 代码必须按照 DDD（Domain-Driven Design，领域驱动设计）风格进行设计和开发。
+- 分层结构遵循：
+  - **领域层（domain）**：包含实体（entity）、值对象（value object）、聚合根（aggregate root）、领域服务（domain service）和仓储接口（repository interface），不依赖任何外部框架。
+  - **应用层（application/app）**：包含应用服务（application service）、DTO 和用例编排，负责协调领域对象完成业务用例。
+  - **基础设施层（infrastructure）**：包含仓储实现（repository implementation）、外部 API 客户端、消息队列、持久化等，实现领域层定义的接口。
+  - **接口层（interface/http/grpc）**：包含 HTTP handler、gRPC server、中间件等，负责协议转换和请求响应处理。
+- 各层依赖方向必须是单向的：接口层 → 应用层 → 领域层 ← 基础设施层。
+- 领域层作为核心，不依赖任何外层，基础设施层通过依赖反转实现领域层接口。
+- 每个服务（backend、agent-server、mcp-server）内部按此分层组织代码。
+
 ## 程序日志
 
 - 程序日志使用英文，便于运行环境、Kubernetes、CI/CD 和第三方日志平台统一检索。

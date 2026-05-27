@@ -8,12 +8,14 @@ require (
 	github.com/cloudwego/eino-ext/components/tool/mcp v0.0.8
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.43.0
+	github.com/sirupsen/logrus v1.9.3
 	google.golang.org/grpc v1.81.1
 	k8s-ai-ops/proto v0.0.0
 )
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
@@ -34,7 +36,6 @@ require (
 	github.com/nikolalohinski/gonja v1.5.3 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.9 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect

@@ -33,7 +33,7 @@ flowchart LR
   API --> KC
   API --> PG
   API --> Redis
-  API -->|"gRPC AgentService.Run"| Agent
+  API -->|"gRPC AgentService.RunStream"| Agent
   Agent --> OpenAI
   Agent --> Anthropic
   Agent --> MCP
@@ -50,14 +50,14 @@ flowchart TD
   JWT --> APIAuth["Backend 校验 JWT"]
   APIAuth --> LocalUser["映射本地 userId"]
   LocalUser --> Perm["加载业务权限和 LLM 模型"]
-  Perm --> Chat["构造 Chat 历史、runtimeContext 和工具 allowlist"]
+  Perm --> Chat["构造 context_messages、current_input 和权限快照"]
   Chat --> Agent["gRPC 调用 Agent Server"]
   Agent --> LLM["Eino 调用 LLM"]
   LLM --> Tool{"是否需要工具？"}
   Tool -- "否" --> Answer["返回回答"]
-  Tool -- "是" --> Authz["工具调用前授权校验"]
-  Authz --> MCP["Agent 调用 MCP Server"]
-  MCP --> ClientGo["使用用户 ServiceAccount 创建 client-go"]
+  Tool -- "是" --> MCP["Agent 调用 MCP Server"]
+  MCP --> Authz["工具执行前授权校验"]
+  Authz --> ClientGo["使用用户 ServiceAccount 创建 client-go"]
   ClientGo --> K8S["访问 Kubernetes API"]
   K8S --> Result["返回工具结果"]
   Result --> LLM
@@ -150,6 +150,6 @@ flowchart TD
 
 - 操作员只允许 namespace 级权限。
 - LLM 不直接访问 Kubernetes。
-- MCP Server 只接受 Backend 调用。
-- Backend 工具调用前必须做授权校验。
+- MCP Server 只接受 Agent Server 调用。
+- MCP Server 工具执行前必须做授权校验。
 - Kubernetes RBAC 是最终权限边界。

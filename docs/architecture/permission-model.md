@@ -4,23 +4,23 @@
 
 引入 Agent Server 后，权限边界分为三层：
 
-- Backend API：读取当前用户真实业务权限，生成工具 allowlist，并决定哪些历史消息和资源引用可以进入 `runtimeContext`。
-- Agent Server：只消费 Backend 传入的上下文和工具 allowlist，不保存权限，不扩大工具范围。
+- Backend API：读取当前用户真实业务权限，并决定哪些历史消息可以进入 `context_messages`。
+- Agent Server：只消费 Backend 传入的上下文和权限快照，不保存权限，只能使用内置 MCP Server 暴露的工具。
 - MCP Server：每次工具执行前再次校验 namespace、apiGroup、resource、verb，并使用当前用户绑定的 ServiceAccount 访问 Kubernetes。
 
-`runtimeContext.recentResources` 只用于多轮指代理解，不是授权凭证。
+`context_messages` 只用于多轮指代理解，不是授权凭证。
 
 ## 总体模型
 
-系统权限分为三层：身份认证、业务授权、Kubernetes RBAC。
+系统权限分为三层：身份认证、业务授权、Kubernetes RBAC。业务授权同时包含 Kubernetes 资源权限、LLM 模型绑定和 Chat 会话归属。
 
 ```mermaid
 flowchart TD
   JWT["Keycloak JWT"] --> Role["平台角色：admin / operator"]
   Role --> DBPerm["PostgreSQL 业务权限"]
   DBPerm --> Prompt["LLM 权限上下文"]
-  DBPerm --> PreCheck["Backend 工具调用前校验"]
-  PreCheck --> SA["操作员 ServiceAccount"]
+  Prompt --> MCPCheck["MCP Server 工具执行前校验"]
+  MCPCheck --> SA["操作员 ServiceAccount"]
   SA --> K8SRBAC["Kubernetes RBAC 最终校验"]
   K8SRBAC --> K8S["Kubernetes API"]
 ```
@@ -49,6 +49,10 @@ namespace=dev apiGroup= resource=pods verbs=get,list,watch
 namespace=dev apiGroup=apps resource=deployments verbs=get,list,watch,patch
 ```
 
+LLM 模型绑定也保存在 PostgreSQL。操作员只能在 `GET /api/operator/llm-models` 中看到自己已绑定且启用的模型，发送 Chat 消息时 Backend 会再次校验 `modelId` 是否属于当前用户。
+
+Chat 会话归属是独立的业务授权边界。发送消息时 Backend 必须先读取 `chat_sessions`，确认 `sessionId` 属于当前用户且会话处于 active 状态，再调用 Agent Server。
+
 ## Kubernetes RBAC
 
 管理员给操作员分配权限后，Backend 动态创建：
@@ -62,7 +66,7 @@ flowchart LR
   Binding --> Namespace["目标 namespace"]
 ```
 
-当前代码已实现 `backend/internal/k8s.RBACManager`，它通过 `client-go` 创建或更新以下对象：
+当前代码已实现 `backend/internal/infra/k8s.RBACManager`，它通过 `client-go` 创建或更新以下对象：
 
 - ServiceAccount
 - Role
@@ -81,7 +85,7 @@ Helm Chart 不默认授予 Backend 集群级权限。部署时需要通过 `rbac
 
 ## 工具调用授权
 
-LLM 生成的工具调用必须经过 Backend 校验：
+LLM 生成的工具调用必须经过 MCP Server 校验：
 
 ```mermaid
 flowchart TD
@@ -89,9 +93,8 @@ flowchart TD
   Parse --> Map["映射到 namespace/resource/verb"]
   Map --> DB["查询用户业务权限"]
   DB --> Allowed{"是否允许？"}
-  Allowed -- "否" --> Deny["拒绝调用并写审计"]
-  Allowed -- "是" --> MCP["调用 MCP Server"]
-  MCP --> K8S["K8S RBAC 再次校验"]
+  Allowed -- "否" --> Deny["拒绝调用并返回工具错误"]
+  Allowed -- "是" --> K8S["K8S RBAC 再次校验"]
 ```
 
 ## 为什么不能只依赖 ServiceAccount
@@ -99,11 +102,27 @@ flowchart TD
 只依赖 Kubernetes RBAC 虽然安全，但用户体验和审计不够好：
 
 - LLM 可能生成越权参数，直接让 Kubernetes 报错会让用户难以理解。
-- Backend 无法在调用前给出清晰提示，例如“你只能访问 dev/test”。
-- 业务侧无法提前记录越权意图和拒绝原因。
+- MCP Server 可以在工具结果中给出清晰提示，例如“你只能访问 dev/test”。
+- 业务侧可以通过 Agent Server 返回的工具事件记录越权意图和拒绝原因。
 
 因此系统必须同时使用：
 
 - prompt 中限制能力范围；
-- Backend 工具调用前校验；
+- MCP Server 工具执行前校验；
 - Kubernetes RBAC 最终兜底。
+
+## 当前实现状态
+
+当前已实现三层权限边界中的核心部分：
+
+- **backend**：K8s RBAC Manager 已实现，通过 `client-go` 动态创建/更新 ServiceAccount、Role、RoleBinding，并附带托管标签（`app.kubernetes.io/managed-by=k8s-ai-ops-backend`）。权限更新接口在 `K8S_RBAC_SYNC_ENABLED=true` 时自动按 namespace 分组同步到 Kubernetes，同步失败时返回 `K8S_RBAC_APPLY_FAILED` 错误。
+- **backend**：操作员模型列表按用户 LLM 绑定过滤；Chat 消息处理会校验会话归属和模型绑定，拒绝跨用户会话或未绑定模型。
+- **mcp-server**：每次工具调用前通过 IdentityService gRPC 获取操作员对应的 ServiceAccount，构建 per-user K8s client，确保 Kubernetes RBAC 在 API 层面隔离。
+- **agent-server**：只消费 Backend 传入的权限上下文，使用内置 MCP 工具，不保存任何权限数据。
+- **proto**：`identity/v1/identity.proto` 已定义 `GetServiceAccount` RPC，Agent Server 和 MCP Server 均通过该接口获取用户身份映射。
+
+尚未实现：
+
+- Keycloak JWT audience 校验
+- Keycloak Admin API 集成（用户创建/禁用未同步到 Keycloak）
+- Redis 缓存的 JWKS 公钥获取

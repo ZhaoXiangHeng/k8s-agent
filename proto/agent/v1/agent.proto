@@ -14,11 +14,9 @@ message AgentRunRequest {
   string message_id = 3;
   UserContext user = 4;
   ModelRuntimeConfig model = 5;
-  repeated Message messages = 6;
-  string message = 7;
+  repeated Message context_messages = 6;
+  string current_input = 7;
   repeated Permission permissions = 8;
-  repeated ToolRef tools = 9;
-  RuntimeContext runtime_context = 10;
 }
 
 message UserContext {
@@ -46,28 +44,6 @@ message Permission {
   string api_group = 2;
   string resource = 3;
   repeated string verbs = 4;
-}
-
-message ToolRef {
-  string name = 1;
-  string namespace = 2;
-  string api_group = 3;
-  string resource = 4;
-  string verb = 5;
-}
-
-message RuntimeContext {
-  string current_user = 1;
-  repeated string allowed_namespaces = 2;
-  repeated ResourceRef recent_resources = 3;
-}
-
-message ResourceRef {
-  string kind = 1;
-  string api_group = 2;
-  string namespace = 3;
-  string name = 4;
-  string summary = 5;
 }
 
 // --- Streaming messages ---

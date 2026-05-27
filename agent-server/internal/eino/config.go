@@ -2,16 +2,21 @@ package eino
 
 import "os"
 
-// Config holds runtime configuration for the agent server.
+// Config 保存 Agent Server 的运行时配置。
 type Config struct {
 	MCPServerURL string
+	SkillsDir    string
 }
 
-// LoadConfig reads configuration from environment variables with sensible defaults.
+// LoadConfig 从环境变量读取配置，并提供本地开发默认值。
 func LoadConfig() Config {
 	url := os.Getenv("MCP_SERVER_URL")
 	if url == "" {
 		url = "http://localhost:8081/sse"
 	}
-	return Config{MCPServerURL: url}
+	skillsDir := os.Getenv("SKILLS_DIR")
+	if skillsDir == "" {
+		skillsDir = "./skills"
+	}
+	return Config{MCPServerURL: url, SkillsDir: skillsDir}
 }

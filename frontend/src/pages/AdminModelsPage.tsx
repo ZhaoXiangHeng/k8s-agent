@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CreateModelRequest, Model, Provider } from "../domain/llm";
 import { DataTable } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
@@ -35,6 +35,19 @@ export function AdminModelsPage({
   const [form, setForm] = useState<CreateModelRequest>(() =>
     preselectedProviderId ? { ...initialModel, providerId: preselectedProviderId } : initialModel
   );
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(null);
+      }
+    }
+    if (menuOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
   useEffect(() => {
     if (preselectedProviderId) {
@@ -123,13 +136,36 @@ export function AdminModelsPage({
                     <StatusBadge active={model.enabled} text={model.enabled ? "启用" : "停用"} />
                   </td>
                   <td>
-                    <div className="rowActions">
-                      <button onClick={() => void onUpdate(model.id, { enabled: !model.enabled })}>
-                        {model.enabled ? "停用" : "启用"}
+                    <div className="rowActions" style={{ position: "relative" }}>
+                      <button
+                        className="iconButton"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (menuOpen === model.id) {
+                            setMenuOpen(null);
+                          } else {
+                            setMenuPos({ top: e.clientY, left: e.clientX - 140 });
+                            setMenuOpen(model.id);
+                          }
+                        }}
+                        title="更多操作"
+                      >
+                        ···
                       </button>
-                      <button className="dangerButton" onClick={() => void onDelete(model.id)}>
-                        删除模型
-                      </button>
+                      {menuOpen === model.id && (
+                        <div
+                          className="contextMenu"
+                          ref={menuRef}
+                          style={{ top: menuPos.top, left: menuPos.left }}
+                        >
+                          <button onClick={() => void onUpdate(model.id, { enabled: !model.enabled })}>
+                            {model.enabled ? "🔴 停用" : "🟢 启用"}
+                          </button>
+                          <button className="dangerButton" onClick={() => { setMenuOpen(null); void onDelete(model.id); }}>
+                            🗑️ 删除
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>

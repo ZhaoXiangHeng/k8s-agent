@@ -818,6 +818,14 @@ textarea {
   background: #f0f7f4;
 }
 
+.contextMenu button.dangerButton {
+  color: #9f1d1d;
+}
+
+.contextMenu button.dangerButton:hover {
+  background: #fff1f0;
+}
+
 .tabs {
   display: flex;
   gap: 8px;

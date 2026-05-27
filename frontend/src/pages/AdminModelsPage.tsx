@@ -30,7 +30,8 @@ export function AdminModelsPage({
   preselectedProviderId?: string;
   embedded?: boolean;
 }) {
-  const [drawer, setDrawer] = useState<"create" | null>(null);
+  const [drawer, setDrawer] = useState<"create" | "edit" | null>(null);
+  const [editTarget, setEditTarget] = useState<Model | null>(null);
   const [filterProviderId, setFilterProviderId] = useState(preselectedProviderId || "");
   const [form, setForm] = useState<CreateModelRequest>(() =>
     preselectedProviderId ? { ...initialModel, providerId: preselectedProviderId } : initialModel
@@ -61,6 +62,7 @@ export function AdminModelsPage({
     : models;
 
   function openCreate() {
+    setEditTarget(null);
     setForm(
       filterProviderId
         ? { ...initialModel, providerId: filterProviderId }
@@ -69,8 +71,31 @@ export function AdminModelsPage({
     setDrawer("create");
   }
 
+  function openEdit(model: Model) {
+    setMenuOpen(null);
+    setEditTarget(model);
+    setForm({
+      providerId: model.providerId,
+      modelName: model.modelName,
+      displayName: model.displayName || "",
+      supportsTools: model.supportsTools,
+      supportsStreaming: model.supportsStreaming,
+      enabled: model.enabled,
+    });
+    setDrawer("edit");
+  }
+
   async function save() {
-    await onCreate({ ...form, providerId: form.providerId || providers[0]?.id || "" });
+    if (drawer === "create") {
+      await onCreate({ ...form, providerId: form.providerId || providers[0]?.id || "" });
+    } else if (drawer === "edit" && editTarget) {
+      await onUpdate(editTarget.id, form);
+    }
+    setDrawer(null);
+    setForm(initialModel);
+  }
+
+  function closeDrawer() {
     setDrawer(null);
     setForm(initialModel);
   }
@@ -158,6 +183,7 @@ export function AdminModelsPage({
                           ref={menuRef}
                           style={{ top: menuPos.top, left: menuPos.left }}
                         >
+                          <button onClick={() => openEdit(model)}>✏️ 编辑</button>
                           <button onClick={() => void onUpdate(model.id, { enabled: !model.enabled })}>
                             {model.enabled ? "🔴 停用" : "🟢 启用"}
                           </button>
@@ -180,8 +206,8 @@ export function AdminModelsPage({
         <div className="drawerOverlay" onClick={() => setDrawer(null)}>
           <div className="drawerPanel" onClick={(e) => e.stopPropagation()}>
             <header className="drawerHeader">
-              <h3>新建 Model</h3>
-              <button className="iconButton" onClick={() => setDrawer(null)}>×</button>
+              <h3>{drawer === "create" ? "新建 Model" : `编辑 Model — ${editTarget?.modelName || editTarget?.displayName || ""}`}</h3>
+              <button className="iconButton" onClick={closeDrawer}>×</button>
             </header>
             <label className="formRow">
               Provider
@@ -217,7 +243,7 @@ export function AdminModelsPage({
               启用
             </label>
             <div className="actions">
-              <button onClick={() => setDrawer(null)}>取消</button>
+              <button onClick={closeDrawer}>取消</button>
               <button onClick={() => void save()}>保存</button>
             </div>
           </div>

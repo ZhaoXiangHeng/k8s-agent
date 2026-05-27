@@ -1,40 +1,77 @@
 import { useState } from "react";
 
-interface SidebarProps {
-  role: "admin" | "operator";
-  activeView: "operator" | "admin";
-  collapsed: boolean;
-  onNavigate: (view: "operator" | "admin") => void;
-  onToggleCollapse: () => void;
-}
+export type PageKey =
+  | "operator-chat"
+  | "operator-permissions"
+  | "operator-models"
+  | "admin-users-permissions"
+  | "admin-llm"
+  | "admin-audit";
 
-interface NavItem {
-  view: "operator" | "admin";
-  label: string;
-  icon: string;
+interface NavGroup {
+  key: string;
+  title: string;
+  items: NavItem[];
   roles: ("admin" | "operator")[];
 }
 
-const navItems: NavItem[] = [
-  { view: "operator", label: "Chat 运维", icon: "💬", roles: ["admin", "operator"] },
-  { view: "admin", label: "用户与权限", icon: "👥", roles: ["admin"] },
-  { view: "admin", label: "模型分配", icon: "🔗", roles: ["admin"] },
+interface NavItem {
+  page: PageKey;
+  label: string;
+  icon: string;
+}
+
+const navGroups: NavGroup[] = [
+  {
+    key: "workbench",
+    title: "运维工作台",
+    roles: ["admin", "operator"],
+    items: [
+      { page: "operator-chat", label: "Chat 运维", icon: "💬" },
+      { page: "operator-permissions", label: "我的授权", icon: "🔑" },
+      { page: "operator-models", label: "可用模型", icon: "🧩" },
+    ],
+  },
+  {
+    key: "platform",
+    title: "平台管理",
+    roles: ["admin"],
+    items: [
+      { page: "admin-users-permissions", label: "用户与权限", icon: "👥" },
+      { page: "admin-llm", label: "LLM 配置", icon: "⚙️" },
+      { page: "admin-audit", label: "审计日志", icon: "📋" },
+    ],
+  },
 ];
+
+interface SidebarProps {
+  role: "admin" | "operator";
+  activePage: PageKey;
+  collapsed: boolean;
+  onNavigate: (page: PageKey) => void;
+  onToggleCollapse: () => void;
+}
 
 export default function Sidebar({
   role,
-  activeView,
+  activePage,
   collapsed,
   onNavigate,
   onToggleCollapse,
 }: SidebarProps) {
-  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
-  const visibleItems = navItems.filter((item) => item.roles.includes(role));
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const visibleGroups = navGroups.filter((g) => g.roles.includes(role));
+  const allCollapsed = visibleGroups.every((g) => collapsedGroups[g.key]);
 
-  const handleNavClick = (item: NavItem) => {
-    onNavigate(item.view);
-    sessionStorage.setItem("adminSubTab", item.label);
-  };
+  function toggleGroup(key: string) {
+    setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function setAllGroups(collapse: boolean) {
+    setCollapsedGroups(
+      Object.fromEntries(visibleGroups.map((g) => [g.key, collapse]))
+    );
+  }
 
   return (
     <aside
@@ -52,19 +89,42 @@ export default function Sidebar({
         )}
       </div>
 
-      <nav>
-        {visibleItems.map((item) => (
-          <button
-            key={item.label}
-            className={activeView === item.view ? "active" : ""}
-            onClick={() => handleNavClick(item)}
-            onMouseEnter={() => collapsed && setHoveredLabel(item.label)}
-            onMouseLeave={() => setHoveredLabel(null)}
-            title={collapsed ? item.label : undefined}
-          >
-            <span className="nav-icon">{item.icon}</span>
-            {!collapsed && <span className="nav-label">{item.label}</span>}
-          </button>
+      {!collapsed && (
+        <button
+          className="navCollapseAll"
+          onClick={() => setAllGroups(!allCollapsed)}
+        >
+          {allCollapsed ? "一键展开导航" : "一键收起导航"}
+        </button>
+      )}
+
+      <nav className="navGroups">
+        {visibleGroups.map((group) => (
+          <div className="navGroup" key={group.key}>
+            {!collapsed && (
+              <button
+                className="navGroupTitle"
+                onClick={() => toggleGroup(group.key)}
+              >
+                <span>{group.title}</span>
+                <span>{collapsedGroups[group.key] ? "＋" : "－"}</span>
+              </button>
+            )}
+            {!collapsedGroups[group.key] &&
+              group.items.map((item) => (
+                <button
+                  key={item.page}
+                  className={activePage === item.page ? "active" : ""}
+                  onClick={() => onNavigate(item.page)}
+                  title={collapsed ? item.label : undefined}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  {!collapsed && (
+                    <span className="nav-label">{item.label}</span>
+                  )}
+                </button>
+              ))}
+          </div>
         ))}
       </nav>
 

@@ -582,3 +582,300 @@ th {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ===== Merged from frontend-mvp: nav groups, topbar, chat, tables, forms ===== */
+
+.navGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.navGroupTitle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #91a1aa;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 4px 2px;
+  text-align: left;
+}
+
+.navCollapseAll {
+  color: #c8d2d7;
+  font-size: 12px;
+  padding: 6px 8px;
+  min-height: auto;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.topbar-role {
+  color: #667681;
+  margin-left: 10px;
+  font-size: 13px;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #dce4e8;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.chatToolbarActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.chatToolbarActions select {
+  min-width: 220px;
+}
+
+.iconButton {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 18px;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  width: 38px;
+}
+
+.sessionHistory {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sessionItem {
+  align-items: stretch;
+  border: 1px solid #cbd5dc;
+  border-radius: 8px;
+  display: flex;
+  overflow: hidden;
+}
+
+.sessionItem > button:first-child {
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  text-align: left;
+}
+
+.sessionItem.activeSession {
+  background: #e6f5ed;
+  border-color: #7cc7a4;
+}
+
+.sessionHistory span {
+  color: #667681;
+  font-size: 12px;
+}
+
+.dangerButton {
+  color: #9f1d1d;
+}
+
+.subtle {
+  color: #667681;
+}
+
+textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.formGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkRow {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.checkRow input {
+  min-height: auto;
+  width: auto;
+}
+
+.permissionRow {
+  border-top: 1px solid #e5ebef;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.splitPanel {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr);
+}
+
+.wideSplit {
+  grid-template-columns: minmax(560px, 1.25fr) minmax(420px, 0.75fr);
+}
+
+.selectedRow {
+  background: #f0f7f4;
+}
+
+.detailPanel {
+  align-self: start;
+}
+
+.drawerPanel {
+  background: #ffffff;
+  box-shadow: -14px 0 30px rgb(17 28 36 / 18%);
+  display: grid;
+  gap: 16px;
+  grid-auto-rows: max-content;
+  height: 100%;
+  max-width: min(720px, 100vw);
+  overflow: auto;
+  padding: 20px;
+  width: 52vw;
+}
+
+.drawerHeader {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.mutedLine {
+  color: #667681;
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tabs button {
+  background: #eef2f5;
+}
+
+.tabs button.activeTab {
+  background: #152027;
+  border-color: #152027;
+  color: #ffffff;
+}
+
+.embeddedPage {
+  display: grid;
+  gap: 16px;
+}
+
+.statusBadge {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.statusBadge.ok {
+  background: #e6f5ed;
+  color: #17643a;
+}
+
+.statusBadge.muted {
+  background: #eef2f5;
+  color: #60717c;
+}
+
+.notice {
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.notice.info {
+  background: #edf5ff;
+  color: #17456f;
+}
+
+.notice.error {
+  background: #fff1f0;
+  color: #9f1d1d;
+}
+
+.emptyState {
+  border: 1px dashed #cbd5dc;
+  border-radius: 8px;
+  color: #667681;
+  padding: 28px;
+  text-align: center;
+}
+
+.chatMessages {
+  display: grid;
+  gap: 10px;
+}
+
+.pending {
+  color: #667681;
+  font-size: 12px;
+}
+
+.messageResources {
+  margin-top: 10px;
+}
+
+.messageResources table {
+  min-width: 640px;
+}
+
+.boot {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+@media (max-width: 860px) {
+  .formGrid,
+  .splitPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .drawerPanel {
+    width: 100vw;
+  }
+}

@@ -7,7 +7,6 @@ type AdminTab = "users" | "models";
 export default function AdminConsole() {
   const [tab, setTab] = useState<AdminTab>("users");
 
-  // Read sub-tab from Sidebar navigation
   useEffect(() => {
     const subTab = sessionStorage.getItem("adminSubTab");
     if (subTab === "模型分配") setTab("models");

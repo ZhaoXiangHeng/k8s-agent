@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 构建 `backend-api + agent-server + 标准 MCP server` 三服务架构，引入 Eino 承接 LLM agent 编排，并同步更新所有受影响文档。
+**Goal:** 构建 `backend-api + agent-server + 标准 MCP server` 三服务架构，引入 Eino 承接 LLM agent 编排，支持由 backend 管理历史的多轮对话，并同步更新所有受影响文档。
 
-**Architecture:** `backend-api` 继续作为前端唯一入口和审计中心，新增 `agent-server` 使用 Eino 执行 Chat Run，`mcp-server` 提供标准 MCP 风格 Kubernetes 工具。服务之间使用稳定 JSON DTO，Eino 类型只存在于 `agent-server` 内部。
+**Architecture:** `backend-api` 继续作为前端唯一入口、历史会话管理者和审计中心，新增 `agent-server` 使用 Eino 执行无状态 Chat Run，`mcp-server` 提供标准 MCP 风格 Kubernetes 工具。服务之间使用稳定 JSON DTO，Eino 类型只存在于 `agent-server` 内部。
 
 **Tech Stack:** Go 1.26、CloudWeGo Eino、Eino MCP Tool、Kubernetes client-go、PostgreSQL、Redis、Helm、Docker、Bash。
 
@@ -40,7 +40,7 @@
 - `backend/internal/config/config.go`：新增 `AgentServerURL`。
 - `backend/internal/config/config_test.go`：覆盖默认值和环境变量。
 - `backend/internal/http/router.go`：Chat 消息改为调用 agent-server，写工具事件审计。
-- `backend/internal/http/router_test.go`：覆盖 agent 调用、错误、审计。
+- `backend/internal/http/router_test.go`：覆盖 agent 调用、多轮上下文、错误、审计。
 - `mcp-server/cmd/server/main.go`：从自定义 `/tools/list_pods` 迁移为 MCP 风格 endpoint。
 - `mcp-server/internal/tools/pods.go`：补充工具请求、过滤和权限映射。
 - `mcp-server/internal/tools/pods_test.go`：补充参数和权限测试。
@@ -188,9 +188,28 @@ type RunRequest struct {
 	MessageID   string              `json:"messageId"`
 	User        UserContext         `json:"user"`
 	Model       ModelRuntimeConfig  `json:"model"`
+	Messages    []Message           `json:"messages"`
 	Message     string              `json:"message"`
 	Permissions []Permission        `json:"permissions"`
 	Tools       []ToolRef           `json:"tools"`
+	RuntimeContext RuntimeContext   `json:"runtimeContext"`
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type RuntimeContext struct {
+	CurrentUser       string             `json:"currentUser"`
+	AllowedNamespaces []string           `json:"allowedNamespaces"`
+	RecentResources   []ResourceRef      `json:"recentResources"`
+}
+
+type ResourceRef struct {
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
 }
 
 type ResourceResult struct {
@@ -501,7 +520,7 @@ git commit -m "feat: add agent server skeleton"
 
 ---
 
-## Task 3: backend-api Chat 接入 agent-server
+## Task 3: backend-api Chat 接入 agent-server 和多轮上下文
 
 **Files:**
 - Modify: `backend/internal/config/config.go`
@@ -564,6 +583,12 @@ func TestRouterCallsAgentForChatMessage(t *testing.T) {
 	if client.calls[0].Message != "帮我看看 dev 异常 Pod" {
 		t.Fatalf("unexpected agent request: %#v", client.calls[0])
 	}
+	if len(client.calls[0].Messages) == 0 {
+		t.Fatalf("expected messages context, got %#v", client.calls[0])
+	}
+	if client.calls[0].RuntimeContext.CurrentUser == "" {
+		t.Fatalf("expected runtime context, got %#v", client.calls[0])
+	}
 }
 ```
 
@@ -605,7 +630,7 @@ server.SetAgentClient(agent.NewHTTPClient(cfg.AgentServerURL))
 
 - [ ] **Step 4: 将 `createChatMessage` 改为调用 agent-server**
 
-保留模型授权检查，授权通过后构造 `agent.RunRequest`，将 `agent.RunResponse` 转换为当前前端响应：
+保留模型授权检查，授权通过后构造 `agent.RunRequest`。`backend-api` 负责组装多轮上下文：`Messages` 至少包含当前用户消息，后续接入持久化 Chat 消息后按 session 读取最近历史；`RuntimeContext` 包含当前用户、授权 namespace 和最近资源引用。将 `agent.RunResponse` 转换为当前前端响应：
 
 ```go
 runResponse, err := s.agentClient.Run(r.Context(), agent.RunRequest{
@@ -623,9 +648,14 @@ runResponse, err := s.agentClient.Run(r.Context(), agent.RunRequest{
 		SupportsTools:     true,
 		SupportsStreaming: true,
 	},
+	Messages: []agent.Message{{
+		Role:    "user",
+		Content: request.Content,
+	}},
 	Message:     request.Content,
 	Permissions: s.agentPermissionsForCurrentUser(),
 	Tools:       s.agentToolsForCurrentUser(),
+	RuntimeContext: s.agentRuntimeContextForCurrentUser(),
 })
 if err != nil {
 	s.audit("operator.chat.message.create", "chat_message", "demo-message", "", "", "", false, "agent server unavailable")
@@ -822,7 +852,7 @@ git commit -m "feat: add mcp tool registry"
 
 ---
 
-## Task 5: agent-server 引入 Eino runner 边界
+## Task 5: agent-server 引入 Eino runner 边界和上下文消费
 
 **Files:**
 - Modify: `agent-server/go.mod`
@@ -851,6 +881,20 @@ func TestRunnerReturnsToolEventsFromAllowedTools(t *testing.T) {
 
 	response, err := runner.Run(context.Background(), agent.RunRequest{
 		Message: "检查 dev 异常 Pod",
+		Messages: []agent.Message{
+			{Role: "user", Content: "帮我看看 dev 有什么异常"},
+			{Role: "assistant", Content: "dev 中有 1 个异常 Pod api-7b8f9"},
+			{Role: "user", Content: "看看这个 Pod 的日志"},
+		},
+		RuntimeContext: agent.RuntimeContext{
+			CurrentUser:       "operator-a",
+			AllowedNamespaces: []string{"dev"},
+			RecentResources: []agent.ResourceRef{{
+				Kind:      "Pod",
+				Namespace: "dev",
+				Name:      "api-7b8f9",
+			}},
+		},
 		Tools: []agent.ToolRef{{
 			Name:      "list_pods",
 			Namespace: "dev",
@@ -1109,6 +1153,7 @@ git commit -m "feat: deploy agent server"
 必须说明：
 
 - Eino agent 负责 LLM 编排。
+- `backend-api` 管理多轮会话历史，`agent-server` 只消费每次请求携带的 `messages` 和 `runtimeContext`。
 - 标准 MCP 工具负责 Kubernetes 操作。
 - 管理员配置 LLM Provider 和模型。
 - 操作员 Chat 巡检通过权限 allowlist 限制工具范围。
@@ -1123,6 +1168,7 @@ git commit -m "feat: deploy agent server"
 - `docs/architecture/data-model.md`
 
 必须包含新的 mermaid 三服务架构图和 Chat 时序图，并说明审计仍由 `backend-api` 统一落库。
+同时说明多轮对话历史、最近资源引用和权限摘要由 `backend-api` 组装，`agent-server` 不持久化历史。
 
 - [ ] **Step 4: 更新开发、运维、安全、参考文档**
 
@@ -1138,6 +1184,7 @@ git commit -m "feat: deploy agent server"
 - `docs/INDEX.md`
 
 必须包含新服务目录、环境变量、Helm values、错误码、日志组件名和术语。
+`docs/reference/api-design.md` 必须包含 `AgentRunRequest.messages`、`AgentRunRequest.runtimeContext` 和当前用户消息 `message` 的关系。
 
 - [ ] **Step 5: 文档一致性扫描**
 

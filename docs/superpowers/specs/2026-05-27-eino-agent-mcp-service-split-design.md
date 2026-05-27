@@ -18,7 +18,8 @@
 2. 将 `mcp-server` 从自定义 HTTP stub 演进为标准 MCP 工具服务。
 3. 保留 `backend-api` 作为前端唯一入口，继续负责认证、权限、模型配置、会话、审计和安全闸口。
 4. 建立稳定的内部 DTO，避免 Eino 类型泄漏到前端 API 或 `backend-api` 外部契约。
-5. 同步更新 `docs/` 下所有受影响文档，确保需求、架构、API、部署、安全和运维说明与代码一致。
+5. 支持多轮对话上下文：`backend-api` 管理会话历史，`agent-server` 只消费本轮请求携带的最小必要上下文。
+6. 同步更新 `docs/` 下所有受影响文档，确保需求、架构、API、部署、安全和运维说明与代码一致。
 
 ## 非目标
 
@@ -26,6 +27,7 @@
 2. 不让 `agent-server` 直接管理用户、权限、模型配置或审计落库。
 3. 不让 LLM 或前端传入的角色声明成为 Kubernetes 授权依据。
 4. 不把 Eino 作为跨服务 API 类型暴露给前端或其他服务。
+5. 不让 `agent-server` 直接查询或持久化 Chat 历史；历史读取、裁剪、脱敏和保存由 `backend-api` 负责。
 
 ## 总体架构
 
@@ -48,6 +50,8 @@ flowchart LR
 - 管理 LLM Provider、模型绑定和默认模型选择。
 - 创建 Chat Session 和 Chat Message。
 - 根据当前用户权限生成工具 allowlist。
+- 读取当前 Chat Session 的历史消息，按策略裁剪和脱敏后传给 `agent-server`。
+- 维护最近资源引用，例如上一轮返回的 Pod、Deployment、Event，用于支持“这个 Pod”“刚才那个 Deployment”等多轮指代。
 - 调用 `agent-server` 执行一次 Chat Run。
 - 记录 Chat 消息、LLM 请求摘要、工具调用事件、允许或拒绝访问事件。
 - 在模型未绑定、工具越权、agent 服务不可用时返回结构化错误。
@@ -61,11 +65,11 @@ flowchart LR
 - 接收 `backend-api` 传入的 `AgentRunRequest`。
 - 根据模型运行配置构造 Eino `ChatModel`。
 - 根据工具 allowlist 注册 MCP-backed tools。
-- 构造系统提示词，包含用户身份、授权范围、可用工具和输出格式。
+- 构造系统提示词，包含用户身份、授权范围、最近对话、最近资源引用、可用工具和输出格式。
 - 调用 LLM，处理 tool call，调用 MCP client，回填工具结果。
 - 返回最终自然语言总结、结构化资源结果和工具调用事件列表。
 
-`agent-server` 不保存用户权限，不落审计库，不自行扩大工具范围。
+`agent-server` 不保存用户权限，不落审计库，不自行扩大工具范围，也不持久化 Chat 历史。多轮对话能力通过 `backend-api` 在每次请求中传入 `messages` 和 `runtimeContext` 实现。
 
 ### `mcp-server`
 
@@ -105,7 +109,21 @@ flowchart LR
     "supportsTools": true,
     "supportsStreaming": true
   },
-  "message": "帮我看看 dev namespace 里有什么异常",
+  "messages": [
+    {
+      "role": "user",
+      "content": "帮我看看 dev namespace 里有什么异常"
+    },
+    {
+      "role": "assistant",
+      "content": "dev namespace 中有 1 个异常 Pod api-7b8f9。"
+    },
+    {
+      "role": "user",
+      "content": "看看这个 Pod 的日志"
+    }
+  ],
+  "message": "看看这个 Pod 的日志",
   "permissions": [
     {
       "namespace": "dev",
@@ -122,9 +140,22 @@ flowchart LR
       "resource": "pods",
       "verb": "list"
     }
-  ]
+  ],
+  "runtimeContext": {
+    "currentUser": "operator-a",
+    "allowedNamespaces": ["dev"],
+    "recentResources": [
+      {
+        "kind": "Pod",
+        "namespace": "dev",
+        "name": "api-7b8f9"
+      }
+    ]
+  }
 }
 ```
+
+`messages` 表示传给 agent 的最近对话上下文，由 `backend-api` 负责裁剪、脱敏和排序。`message` 保留为当前用户输入，便于简单调用和日志摘要。`runtimeContext` 表示非自然语言上下文，包括当前用户、授权 namespace 和最近资源引用。`agent-server` 可以使用这些上下文理解多轮指代，但不能把它们当作授权依据。
 
 ### `AgentRunResponse`
 
@@ -158,7 +189,7 @@ flowchart LR
 
 权限校验采用两层防护：
 
-1. `backend-api` 根据当前用户真实业务权限生成工具 allowlist，并拒绝未授权模型和明显越权工具范围。
+1. `backend-api` 根据当前用户真实业务权限生成工具 allowlist，并拒绝未授权模型和明显越权工具范围；同时筛选多轮历史，只传入当前用户当前会话可见的最小必要上下文。
 2. `mcp-server` 在每次工具执行前再次校验 namespace、resource、verb，并使用当前用户绑定的 ServiceAccount 访问 Kubernetes。
 
 审计由 `backend-api` 统一写入：
@@ -222,6 +253,7 @@ image-tars/agent-server-amd64.tar
 ### `agent-server`
 
 - 使用 mock LLM 和 mock MCP 验证一次 tool call 到最终回答的 agent loop。
+- 验证 `messages` 和 `runtimeContext.recentResources` 可以用于解析多轮指代。
 - 验证 Eino 类型不会出现在公共 DTO。
 - 验证工具 allowlist 为空时不会注册 Kubernetes 工具。
 - 验证 LLM 请求失败会返回结构化错误。
@@ -253,7 +285,7 @@ image-tars/agent-server-amd64.tar
 - `docs/architecture/system-architecture.md`：更新组件拓扑、部署拓扑和服务职责。
 - `docs/architecture/permission-model.md`：更新 backend、agent、MCP 三层授权边界。
 - `docs/architecture/chat-mcp-flow.md`：更新 Eino agent loop 和标准 MCP 调用链路。
-- `docs/architecture/data-model.md`：确认审计、Chat、LLM 配置模型是否需要新增字段说明。
+- `docs/architecture/data-model.md`：更新 Chat 消息历史、最近资源引用、审计、LLM 配置模型说明。
 - `docs/developer/developer-guide.md`：更新目录结构、agent-server 开发方式、测试命令。
 - `docs/operations/deployment-guide.md`：更新 Helm values、镜像、端口、环境变量、部署命令。
 - `docs/operations/observability-and-troubleshooting.md`：更新 agent-server 日志、审计事件和排错路径。
@@ -269,19 +301,21 @@ image-tars/agent-server-amd64.tar
 1. 新增 `agent-server` Go module、Dockerfile、健康检查和 Helm 模板。
 2. 在 `agent-server` 中定义内部 DTO、Eino runner 接口和 mock runner 测试。
 3. 将 `backend-api` Chat 消息处理改为调用 `agent-server`，保留模型授权和审计。
-4. 将 `mcp-server` 工具定义改造为标准 MCP 风格，保留 Kubernetes 工具测试。
-5. 接入 Eino ChatModel 和 MCP-backed tools。
-6. 更新构建脚本、Helm values 和部署文档。
-7. 更新全部受影响文档。
-8. 运行后端、agent、MCP 单元测试和 Helm 模板验证。
+4. 在 `backend-api` 中为 `AgentRunRequest` 组装最近对话历史和最近资源引用。
+5. 将 `mcp-server` 工具定义改造为标准 MCP 风格，保留 Kubernetes 工具测试。
+6. 接入 Eino ChatModel 和 MCP-backed tools。
+7. 更新构建脚本、Helm values 和部署文档。
+8. 更新全部受影响文档。
+9. 运行后端、agent、MCP 单元测试和 Helm 模板验证。
 
 ## 验收标准
 
 1. `backend-api`、`agent-server`、`mcp-server` 三个服务均有 `/healthz` 或等价健康检查。
 2. Chat 消息请求通过 `backend-api` 调用 `agent-server`，不再直接返回固定巡检结果。
-3. `agent-server` 内部使用 Eino 完成至少一个 mock tool calling 流程测试。
-4. `mcp-server` 暴露标准 MCP 工具定义，并覆盖权限拒绝测试。
-5. 未授权模型、越权工具调用、agent 不可用和 MCP 不可用均返回结构化错误。
-6. 工具调用、拒绝访问、LLM 配置变更和 Chat 消息均写审计。
-7. Helm values、模板、构建脚本包含 `agent-server`。
-8. `docs/` 与根目录文档中所有受影响内容均已同步为中文说明。
+3. `backend-api` 负责保存和组装多轮历史，`agent-server` 无状态消费 `messages` 和 `runtimeContext`。
+4. `agent-server` 内部使用 Eino 完成至少一个 mock tool calling 流程测试。
+5. `mcp-server` 暴露标准 MCP 工具定义，并覆盖权限拒绝测试。
+6. 未授权模型、越权工具调用、agent 不可用和 MCP 不可用均返回结构化错误。
+7. 工具调用、拒绝访问、LLM 配置变更和 Chat 消息均写审计。
+8. Helm values、模板、构建脚本包含 `agent-server`。
+9. `docs/` 与根目录文档中所有受影响内容均已同步为中文说明。

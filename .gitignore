@@ -2,9 +2,9 @@ node_modules/
 dist/
 .superpowers/
 *.log
-image-tars/*.tar
 .worktrees/
 .tools/
 *.exe
 __pycache__/
 .claude/skills/*/.tmp/
+golang挑战任务.pdf

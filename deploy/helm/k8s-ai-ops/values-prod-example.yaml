@@ -22,7 +22,4 @@ backend:
 agentServer:
   replicas: 2
 
-rbac:
-  managedNamespaces:
-    - dev
-    - test
+rbac: {}

@@ -40,7 +40,6 @@ agentServer:
     port: 8082
 
 rbac:
-  managedNamespaces: []
   # 管理员 ServiceAccount — 部署时自动创建并绑定 cluster-admin
   adminServiceAccount:
     enabled: true

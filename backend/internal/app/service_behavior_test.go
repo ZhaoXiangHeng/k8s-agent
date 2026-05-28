@@ -34,7 +34,7 @@ func TestChatProcessMessageStopsWhenUserMessageCannotBeSaved(t *testing.T) {
 	err := svc.ProcessMessage(context.Background(), ChatMessageRequest{
 		ModelID: "model-1",
 		Content: "kubectl get pods",
-	}, "user-1", "alice", "session-1", nil)
+	}, "user-1", "alice", "operator", "session-1", nil)
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected message append error %v, got %v", wantErr, err)
@@ -54,7 +54,7 @@ func TestChatProcessMessageReturnsPermissionLookupError(t *testing.T) {
 	err := svc.ProcessMessage(context.Background(), ChatMessageRequest{
 		ModelID: "model-1",
 		Content: "kubectl get pods",
-	}, "user-1", "alice", "session-1", nil)
+	}, "user-1", "alice", "operator", "session-1", nil)
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected permission lookup error %v, got %v", wantErr, err)
@@ -74,7 +74,7 @@ func TestChatProcessMessageRejectsSessionOwnedByAnotherUser(t *testing.T) {
 	err := svc.ProcessMessage(context.Background(), ChatMessageRequest{
 		ModelID: "model-1",
 		Content: "kubectl get pods",
-	}, "user-1", "alice", "session-1", nil)
+	}, "user-1", "alice", "operator", "session-1", nil)
 
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("expected forbidden session error, got %v", err)
@@ -94,7 +94,7 @@ func TestChatProcessMessageRejectsUnboundModel(t *testing.T) {
 	err := svc.ProcessMessage(context.Background(), ChatMessageRequest{
 		ModelID: "model-1",
 		Content: "kubectl get pods",
-	}, "user-1", "alice", "session-1", nil)
+	}, "user-1", "alice", "operator", "session-1", nil)
 
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("expected forbidden model error, got %v", err)

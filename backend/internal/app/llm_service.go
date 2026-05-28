@@ -132,7 +132,7 @@ func (s *LLMService) ListModels(ctx context.Context, userID string, enabledOnly 
 	return out, nil
 }
 
-func (s *LLMService) CreateModel(ctx context.Context, req CreateModelRequest) (*ModelResponse, error) {
+func (s *LLMService) CreateModel(ctx context.Context, req CreateModelRequest, creatorUserID string) (*ModelResponse, error) {
 	m := &domain.LLMModel{
 		ProviderID: req.ProviderID, ModelName: req.ModelName, DisplayName: req.DisplayName,
 		SupportsTools: req.SupportsTools, SupportsStreaming: req.SupportsStreaming, Enabled: req.Enabled,
@@ -140,6 +140,20 @@ func (s *LLMService) CreateModel(ctx context.Context, req CreateModelRequest) (*
 	if err := s.repos.Models.Save(ctx, m); err != nil {
 		return nil, fmt.Errorf("save model: %w", err)
 	}
+
+	// auto-bind the creator so the model is immediately available on operator-side pages
+	if creatorUserID != "" {
+		existing, err := s.repos.Bindings.FindByUser(ctx, creatorUserID)
+		if err != nil {
+			appLog.WithError(err).WithField("user_id", creatorUserID).Warn("auto-bind: failed to find existing bindings")
+		} else {
+			bindings := append(existing, domain.LLMBinding{UserID: creatorUserID, ModelID: m.ID})
+			if err := s.repos.Bindings.Replace(ctx, creatorUserID, bindings); err != nil {
+				appLog.WithError(err).WithField("user_id", creatorUserID).Warn("auto-bind: failed to replace bindings")
+			}
+		}
+	}
+
 	appLog.WithFields(logrus.Fields{"event": "llm_model_created", "model_id": m.ID}).Info("model created")
 	return &ModelResponse{
 		ID: m.ID, ProviderID: m.ProviderID, ModelName: m.ModelName,

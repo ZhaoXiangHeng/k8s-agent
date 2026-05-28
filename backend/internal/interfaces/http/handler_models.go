@@ -21,12 +21,12 @@ func (s *Server) createModel(c *gin.Context) {
 		failBadRequest(c, "INVALID_REQUEST", "Invalid request body.")
 		return
 	}
-	result, err := s.Svc.LLM.CreateModel(c.Request.Context(), req)
+	actorID, _, _ := getUser(c)
+	result, err := s.Svc.LLM.CreateModel(c.Request.Context(), req, actorID)
 	if err != nil {
 		failBadRequest(c, "INVALID_REQUEST", err.Error())
 		return
 	}
-	actorID, _, _ := getUser(c)
 	if !s.recordAuditOrFail(c, actorID, "admin.model.create", "llm_model", result.ID, true, "created") {
 		return
 	}

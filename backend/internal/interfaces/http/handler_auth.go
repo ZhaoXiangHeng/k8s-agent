@@ -30,7 +30,11 @@ func (s *Server) operatorPermissions(c *gin.Context) {
 }
 
 func (s *Server) operatorModels(c *gin.Context) {
-	uid, _, _ := getUser(c)
+	uid, _, role := getUser(c)
+	// admin 不受模型绑定限制，可查看所有已启用的模型
+	if role == "admin" {
+		uid = ""
+	}
 	result, err := s.Svc.LLM.ListModels(c.Request.Context(), uid, true)
 	if err != nil {
 		failInternal(c, "INTERNAL_ERROR", err.Error())

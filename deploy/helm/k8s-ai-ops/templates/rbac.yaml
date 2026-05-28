@@ -33,32 +33,34 @@ metadata:
     kubernetes.io/service-account.name: {{ .Values.rbac.adminServiceAccount.name }}
 type: kubernetes.io/service-account-token
 {{- end }}
-{{- range .Values.rbac.managedNamespaces }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: k8s-ai-backend-rbac-manager
-  namespace: {{ . }}
+  labels:
+    app.kubernetes.io/name: k8s-ai-ops
+    app.kubernetes.io/managed-by: k8s-ai-ops-backend
 rules:
   - apiGroups: [""]
     resources: ["serviceaccounts"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: k8s-ai-backend-rbac-manager
-  namespace: {{ . }}
+  labels:
+    app.kubernetes.io/name: k8s-ai-ops
+    app.kubernetes.io/managed-by: k8s-ai-ops-backend
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: k8s-ai-backend-rbac-manager
 subjects:
   - kind: ServiceAccount
     name: k8s-ai-backend
-    namespace: {{ $.Values.global.namespace }}
-{{- end }}
+    namespace: {{ .Values.global.namespace }}

@@ -10,10 +10,7 @@ frontend:
 ingress:
   enabled: false
 
-rbac:
-  managedNamespaces:
-    - dev
-    - test
+rbac: {}
 
 agentServer:
   replicas: 1

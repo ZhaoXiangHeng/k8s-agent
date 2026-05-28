@@ -60,11 +60,11 @@ func (s *ChatService) DeleteSession(ctx context.Context, sessionID, userID strin
 // ProcessMessage 处理一条 Chat 消息的完整流程：
 // 校验模型 → 持久化用户消息 → 解密 Provider → 构建 AgentRequest →
 // gRPC 调用 Agent Server → 流式返回事件 → 持久化响应
-func (s *ChatService) ProcessMessage(ctx context.Context, input ChatMessageRequest, userID, username, sessionID string, sender SSEWriter) error {
+func (s *ChatService) ProcessMessage(ctx context.Context, input ChatMessageRequest, userID, username, role, sessionID string, sender SSEWriter) error {
 	if err := s.ensureSessionOwner(ctx, sessionID, userID); err != nil {
 		return err
 	}
-	if err := s.ensureModelBoundToUser(ctx, input.ModelID, userID); err != nil {
+	if err := s.ensureModelBoundToUser(ctx, input.ModelID, userID, role); err != nil {
 		return err
 	}
 
@@ -180,7 +180,10 @@ func (s *ChatService) ensureSessionOwner(ctx context.Context, sessionID, userID 
 	return nil
 }
 
-func (s *ChatService) ensureModelBoundToUser(ctx context.Context, modelID, userID string) error {
+func (s *ChatService) ensureModelBoundToUser(ctx context.Context, modelID, userID, role string) error {
+	if role == "admin" {
+		return nil
+	}
 	bindings, err := s.repos.Bindings.FindByUser(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("find user model bindings: %w", err)

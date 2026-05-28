@@ -40,7 +40,7 @@ func (s *Server) createChatMessage(c *gin.Context) {
 		return
 	}
 
-	uid, username, _ := getUser(c)
+	uid, username, role := getUser(c)
 	sessionID := c.Param("sessionId")
 
 	c.Header("Content-Type", "text/event-stream")
@@ -50,7 +50,7 @@ func (s *Server) createChatMessage(c *gin.Context) {
 	flusher, _ := c.Writer.(http.Flusher)
 	sender := &sseWriter{w: c.Writer, flusher: flusher}
 
-	if err := s.Svc.Chat.ProcessMessage(c.Request.Context(), req, uid, username, sessionID, sender); err != nil {
+	if err := s.Svc.Chat.ProcessMessage(c.Request.Context(), req, uid, username, role, sessionID, sender); err != nil {
 		if auditErr := s.Svc.Audit.Record(c.Request.Context(), uid, "operator.chat.message", "chat_message", "", false, err.Error()); auditErr != nil {
 			pkgLog.WithError(auditErr).WithField("event", "audit_record_failed").Error("failed to record chat audit log")
 		}

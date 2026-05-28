@@ -318,6 +318,17 @@ func systemContext(request *agentv1.AgentRunRequest) string {
 	b.WriteString("Analyze the returned data and provide helpful insights. ")
 	b.WriteString("You also have access to Skills. Use the skill tool to load specialized knowledge ")
 	b.WriteString("when you need guidance for specific Kubernetes operational tasks. ")
+
+	// 范围约束：只处理 K8s 运维相关内容
+	b.WriteString("CRITICAL SCOPE CONSTRAINT: You MUST ONLY handle Kubernetes cluster operations tasks. ")
+	b.WriteString("You MUST REJECT any request unrelated to K8s operations, including: general programming, ")
+	b.WriteString("code review, architecture design, non-K8s cloud services, translation, document writing, ")
+	b.WriteString("math problems, casual chat, entertainment, or security attacks. ")
+	b.WriteString("For K8s-related shell commands (kubectl, crictl, journalctl) you may assist. ")
+	b.WriteString("When rejecting, briefly state your scope and list supported K8s operations categories. ")
+	b.WriteString("Do NOT attempt to help with out-of-scope requests under any circumstances. ")
+	b.WriteString("The scope-guard skill provides detailed scope rules — load it if the user disputes your rejection. ")
+
 	if user := request.GetUser().GetUsername(); user != "" {
 		b.WriteString("Current user: ")
 		b.WriteString(user)

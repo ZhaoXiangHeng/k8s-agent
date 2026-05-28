@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	einomcp "github.com/cloudwego/eino-ext/components/tool/mcp"
 	"github.com/sirupsen/logrus"
@@ -44,9 +45,36 @@ func (w *userIDToolWrapper) InvokableRun(ctx context.Context, argumentsInJSON st
 	return w.inner.InvokableRun(ctx, string(newJSON), opts...)
 }
 
-// NewClient 连接 MCP SSE 服务并发现内置工具。
+// NewClient 连接 MCP SSE 服务并发现内置工具，带指数退避重试。
+// 每次连接尝试失败后以 1s → 2s → 4s → ... → 30s 退避重试。
 func NewClient(ctx context.Context, serverURL string) (*Client, error) {
-	pkgLog.WithField("event", "mcp_connect_start").WithField("url", serverURL).Info("connecting to MCP server")
+	backoff := 1 * time.Second
+	const maxBackoff = 30 * time.Second
+	for {
+		pkgLog.WithField("event", "mcp_connect_start").WithField("url", serverURL).Info("connecting to MCP server")
+		c, err := connectMCP(ctx, serverURL)
+		if err == nil {
+			return c, nil
+		}
+		pkgLog.WithError(err).WithFields(logrus.Fields{
+			"event":   "mcp_connect_retry",
+			"url":     serverURL,
+			"backoff": backoff.String(),
+		}).Warn("failed to connect to MCP server, retrying...")
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
+}
+
+// connectMCP 执行单次 MCP 连接：创建 SSE 客户端 → 启动 → 初始化 → 发现工具。
+func connectMCP(ctx context.Context, serverURL string) (*Client, error) {
 	sseClient, err := mcptransport.NewSSEMCPClient(serverURL)
 	if err != nil {
 		pkgLog.WithError(err).WithField("event", "mcp_client_create_failed").WithField("url", serverURL).Error("failed to create MCP SSE client")

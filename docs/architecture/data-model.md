@@ -4,9 +4,9 @@
 
 Agent Server 不持久化 Chat 数据。Backend 需要保存 Chat Session、Chat Message、工具事件和结构化资源结果，并在下一轮请求中组装：
 
-- `context_messages`：最近对话窗口，不包含当前输入。
-- `current_input`：当前用户本轮输入。
-- `permissions`：当前用户权限快照。Agent Server 只把它作为提示上下文，实际工具能力来自内置 MCP Server 工具发现和 MCP Server 的再次权限校验。
+- `context_messages`：最近对话窗口，不包含当前输入
+- `current_input`：当前用户本轮输入
+- `permissions`：当前用户权限快照。Agent Server 只把它作为提示上下文，实际工具能力来自内置 MCP Server 工具发现和 MCP Server 的再次权限校验
 
 权限变化后，Backend 必须重新筛选历史上下文和最近资源引用。
 
@@ -221,30 +221,14 @@ created_at
 
 ## 数据安全规则
 
-- 不保存 ServiceAccount 明文 token。
-- 不保存 LLM API Key 明文。
-- 不保存 Kubernetes Secret 明文。
-- Chat 工具结果中的日志需要限制大小。
-- 审计日志保存脱敏后的请求和响应。
+- 不保存 ServiceAccount 明文 token
+- 不保存 LLM API Key 明文
+- 不保存 Kubernetes Secret 明文
+- Chat 工具结果中的日志需要限制大小
+- 审计日志保存脱敏后的请求和响应
 
-## 当前实现状态
+## 实现说明
 
-当前 Backend 使用 `backend/internal/infra/postgres.DataStore` 作为 PostgreSQL 仓储实现，并通过 GORM AutoMigrate 自动建表。
+当前 Backend 使用 `backend/internal/infra/postgres.DataStore` 作为 PostgreSQL 仓储实现，通过 GORM AutoMigrate 自动建表。尚未实现版本化 migration 脚本和 Redis 业务缓存。
 
-已实现的表/实体：
-
-- `users`：平台用户映射（含 `username`、`display_name`、`email`、`role`、`status`）
-- `k8s_permissions`：业务权限（`namespace + apiGroup + resource + verbs_json`）
-- `service_account_bindings`：操作员与 K8s ServiceAccount 绑定
-- `service_account_tokens`：用户级 ServiceAccount 运行时凭据，`token_ciphertext` 通过 `ENCRYPTION_KEY` 派生密钥加密
-- `llm_providers`：LLM Provider 配置（`protocol`、`base_url`、`api_key_ciphertext`）
-- `llm_models`：Provider 下可用模型（含 `supports_tools`、`supports_streaming` 标志）
-- `user_llm_bindings`：用户与模型绑定（含 `is_default`）
-- `chat_sessions`：Chat 会话元数据
-- `chat_messages`：用户/助手/工具消息（含 `tool_name`、`tool_args_json`、`tool_result_json`）
-- `audit_logs`：审计日志（含脱敏请求/响应）
-
-尚未实现：
-
-- 版本化 migration 脚本（当前依赖 GORM AutoMigrate）
-- Redis 业务缓存（会话缓存、权限缓存）和流式状态存储
+完整的数据操作接口定义见 `backend/internal/domain/`，基础设施实现见 `backend/internal/infra/postgres/`。

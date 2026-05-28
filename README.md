@@ -31,14 +31,14 @@ flowchart LR
 
 ## 文档入口
 
-请从 [文档中心](docs/INDEX.md) 开始阅读。文档按读者角色分层：
+请从 [文档中心](docs/README.md) 开始阅读。文档按使用者/开发者/参考三条主线组织：
 
-- 快速了解项目：[产品概览](docs/product/overview.md)
+- 快速了解项目：[快速开始](docs/guides/quickstart.md)、[产品概览](docs/product/overview.md)
 - 产品/面试官：[业务需求](docs/product/requirements.md)、[用户流程](docs/product/user-journeys.md)
 - 架构/技术负责人：[系统架构](docs/architecture/system-architecture.md)、[权限模型](docs/architecture/permission-model.md)、[Chat 与 MCP 流程](docs/architecture/chat-mcp-flow.md)
-- 二开开发者：[二开指南](docs/developer/developer-guide.md)、[API 设计](docs/reference/api-design.md)
+- 开发者：[开发者文档中心](docs/developer/README.md) — 快速接手、架构总览、技术原理、扩展指南、交付流程
 - 部署运维：[部署指南](docs/operations/deployment-guide.md)、[日志、审计与排错](docs/operations/observability-and-troubleshooting.md)
-- 公有云测试：[公有云 Kubernetes 测试计划](docs/operations/public-cloud-test-plan.md)
+- 参考：[API 设计](docs/reference/api-design.md)、[配置参考](docs/reference/config-reference.md)、[术语表](docs/reference/glossary.md)
 - 安全审查：[安全设计](docs/security/security-design.md)
 
 ## 本地验证

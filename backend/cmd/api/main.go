@@ -24,6 +24,7 @@ import (
 	"k8s-ai-ops/backend/internal/infra/postgres"
 	grpcserver "k8s-ai-ops/backend/internal/interfaces/grpc"
 	apihttp "k8s-ai-ops/backend/internal/interfaces/http"
+	"k8s.io/client-go/kubernetes"
 	agentv1 "k8s-ai-ops/proto/agent/v1"
 	identityv1 "k8s-ai-ops/proto/identity/v1"
 )
@@ -59,14 +60,16 @@ func main() {
 	// 3. Domain: Repositories (from infrastructure)
 	repos := &db.Repositories
 
-	// 4. Infrastructure: K8s RBAC Manager
+	// 4. Infrastructure: K8s client & RBAC Manager
+	var k8sClient kubernetes.Interface
 	var rbacApplier app.RBACApplier
 	if cfg.K8SRBACSyncEnabled {
-		client, err := k8s.NewClientset(cfg.Kubeconfig)
+		var err error
+		k8sClient, err = k8s.NewClientset(cfg.Kubeconfig)
 		if err != nil {
 			log.WithError(err).WithField("event", "k8s_client_failed").Fatal("failed to create K8s client")
 		}
-		manager := k8s.NewRBACManager(client)
+		manager := k8s.NewRBACManager(k8sClient)
 		rbacApplier = app.RBACApplierFunc(func(ctx context.Context, userID string, permissions []domain.Permission) error {
 			byNamespace := map[string][]k8s.PermissionSpec{}
 			for _, permission := range permissions {
@@ -88,28 +91,19 @@ func main() {
 			return nil
 		})
 	}
+	// IdentityServer 需要 K8s client 获取 admin SA token，可能独立于 RBAC sync
+	if k8sClient == nil {
+		var err error
+		k8sClient, err = k8s.NewClientset(cfg.Kubeconfig)
+		if err != nil {
+			log.WithError(err).WithField("event", "k8s_client_failed").Warn("failed to create K8s client for identity service")
+		}
+	}
 
 	// 5. Application: Services
 	svc := app.NewServices(repos, crypto.Cipher{}, rbacApplier)
 
-	// 6. Infrastructure: Agent Server gRPC client
-	agentConn, err := agent.Dial(context.Background(), cfg.AgentServerAddr)
-	if err != nil {
-		log.WithError(err).WithField("event", "agent_connect_failed").Fatal("failed to connect to Agent Server")
-	}
-	defer agentConn.Close()
-	agentClient := agent.NewGRPCClient(agentv1.NewAgentServiceClient(agentConn))
-	svc.SetChatService(app.NewChatService(repos, agentClientAdapter{inner: agentClient}, crypto.Cipher{}))
-	log.WithField("event", "agent_server_connected").Info("Agent Server ready")
-
-	// 7. Interface: HTTP Server
-	httpSrv := apihttp.NewServer(svc)
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	jwtValidator := auth.NewJWTValidator(auth.Mode(cfg.AuthMode), cfg.KeycloakIssuer)
-	apihttp.RegisterRoutes(r, httpSrv, jwtValidator)
-
-	// 8. Interface: gRPC IdentityService
+	// 6. Interface: gRPC IdentityService（先于 Agent 连接启动，mcp-server 需要此 gRPC）
 	grpcAddr := os.Getenv("GRPC_ADDR")
 	if grpcAddr == "" {
 		grpcAddr = ":8082"
@@ -119,12 +113,36 @@ func main() {
 		log.WithError(err).WithField("event", "grpc_listen_failed").Fatal("failed to listen")
 	}
 	grpcSrv := grpc.NewServer()
-	identityv1.RegisterIdentityServiceServer(grpcSrv, grpcserver.NewIdentityServer(repos.ServiceAccts))
+	var identityTokenProv *k8s.TokenProvider
+	if k8sClient != nil {
+		identityTokenProv = k8s.NewTokenProvider(k8sClient)
+	}
+	identityv1.RegisterIdentityServiceServer(grpcSrv, grpcserver.NewIdentityServer(
+		repos.ServiceAccts, repos.Users, identityTokenProv,
+		cfg.AdminSAName, cfg.AdminSANamespace,
+	))
 	go func() {
 		if err := grpcSrv.Serve(grpcListener); err != nil {
 			log.WithError(err).WithField("event", "grpc_server_exit").Fatal("gRPC server exited")
 		}
 	}()
+
+	// 7. Infrastructure: Agent Server gRPC client（带重试）
+	agentConn, err := agent.Dial(context.Background(), cfg.AgentServerAddr)
+	if err != nil {
+		log.WithError(err).WithField("event", "agent_connect_failed").Fatal("failed to connect to Agent Server")
+	}
+	defer agentConn.Close()
+	agentClient := agent.NewGRPCClient(agentv1.NewAgentServiceClient(agentConn))
+	svc.SetChatService(app.NewChatService(repos, agentClientAdapter{inner: agentClient}, crypto.Cipher{}))
+	log.WithField("event", "agent_server_connected").Info("Agent Server ready")
+
+	// 8. Interface: HTTP Server
+	httpSrv := apihttp.NewServer(svc)
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	jwtValidator := auth.NewJWTValidator(auth.Mode(cfg.AuthMode), cfg.KeycloakIssuer)
+	apihttp.RegisterRoutes(r, httpSrv, jwtValidator)
 
 	// 9. Start HTTP Server with graceful shutdown
 	httpServer := &http.Server{Addr: cfg.HTTPAddr, Handler: r}

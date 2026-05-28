@@ -1,4 +1,0 @@
-﻿interface:
-  display_name: "Core Agent KWeaver 接入"
-  short_description: "指导 Python 服务通过 pip 包接入 KWeaver SDK"
-  default_prompt: "使用这个技能来指导 D:\\code\\v9_work\\Anybackup\\Agent\\service\\core_agent 下的 core_agent_service 通过 pip 包 kweaver-sdk 接入 KWeaver Core Decision Agent。"

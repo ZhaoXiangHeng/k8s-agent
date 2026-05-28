@@ -15,7 +15,7 @@ import {
   updateModel,
   updateProvider
 } from "../infrastructure/api/llmApi";
-import { updateUserPermissions } from "../infrastructure/api/permissionApi";
+import { listUserPermissions, updateUserPermissions } from "../infrastructure/api/permissionApi";
 import { createUser, deleteUser, listUsers, resetUserPassword } from "../infrastructure/api/userApi";
 import { listUserModelBindings, updateUserModelBindings } from "../infrastructure/api/userModelBindingApi";
 import { appConfig } from "../config";
@@ -60,9 +60,13 @@ export function useAdminData(auth: ApiAuth, enabled = true) {
         listUserModelBindings(auth),
         listAuditLogs(auth)
       ]);
+      const permissionEntries = await Promise.all(
+        nextUsers.map(async (user) => [user.id, await listUserPermissions(auth, user.id)] as const)
+      );
       setUsers(nextUsers);
       setProviders(nextProviders);
       setModels(nextModels);
+      setPermissionsByUserId(Object.fromEntries(permissionEntries));
       setModelBindingsByUserId(nextModelBindings);
       setAuditLogs(nextAuditLogs);
     } catch (err) {

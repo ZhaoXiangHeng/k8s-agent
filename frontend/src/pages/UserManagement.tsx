@@ -1,32 +1,37 @@
-import { useState, useRef, useEffect } from "react";
-import { listUsers, createUser, resetPassword, updateUser } from "../store/auth";
-import type { User } from "../store/auth";
+import { useEffect, useRef, useState } from "react";
+import type { CreateUserRequest, User } from "../domain/user";
+import { EmptyState } from "../components/EmptyState";
 
 interface UserManagementProps {
+  users: User[];
+  onCreateUser: (body: CreateUserRequest) => Promise<void>;
+  onDeleteUser: (id: string) => Promise<void>;
+  onResetPassword: (id: string, password: string) => Promise<void>;
   onNavigateToTab?: (tab: "models" | "permissions", userId: string) => void;
 }
 
-export default function UserManagement({ onNavigateToTab }: UserManagementProps) {
-  const [users, setUsers] = useState<User[]>(listUsers());
+export default function UserManagement({
+  users,
+  onCreateUser,
+  onDeleteUser,
+  onResetPassword,
+  onNavigateToTab,
+}: UserManagementProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
-  const [editTarget, setEditTarget] = useState<User | null>(null);
-  const [editForm, setEditForm] = useState({ username: "", role: "operator" as "admin" | "operator", displayName: "", email: "", notes: "" });
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Create form state
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"admin" | "operator">("operator");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-
-  // Reset password state
   const [resetPasswordValue, setResetPasswordValue] = useState("");
 
-  // Close menu when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -39,41 +44,57 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpen]);
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newUsername || !newPassword) return;
-    createUser(newUsername, newPassword, newRole, newDisplayName || newUsername, newEmail || `${newUsername}@example.com`);
-    setNewUsername("");
-    setNewPassword("");
-    setNewDisplayName("");
-    setNewEmail("");
-    setShowCreate(false);
-    setUsers(listUsers());
+    setSubmitting(true);
+    setFormError("");
+    try {
+      await onCreateUser({
+        username: newUsername,
+        password: newPassword,
+        role: newRole,
+        displayName: newDisplayName || newUsername,
+        email: newEmail || `${newUsername}@example.com`,
+      });
+      setNewUsername("");
+      setNewPassword("");
+      setNewDisplayName("");
+      setNewEmail("");
+      setShowCreate(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "创建用户失败");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!resetTarget || !resetPasswordValue) return;
-    resetPassword(resetTarget.id, resetPasswordValue);
-    setResetPasswordValue("");
-    setResetTarget(null);
+    setSubmitting(true);
+    setFormError("");
+    try {
+      await onResetPassword(resetTarget.id, resetPasswordValue);
+      setResetPasswordValue("");
+      setResetTarget(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "重置密码失败");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleEdit = (user: User) => {
+  const handleDelete = async (user: User) => {
     setMenuOpen(null);
-    setEditTarget(user);
-    setEditForm({
-      username: user.username,
-      role: user.role,
-      displayName: user.displayName,
-      email: user.email,
-      notes: user.notes || "",
-    });
-  };
-
-  const handleSaveEdit = () => {
-    if (!editTarget) return;
-    updateUser(editTarget.id, editForm);
-    setEditTarget(null);
-    setUsers(listUsers());
+    if (!window.confirm(`确认删除用户 ${user.username}？`)) return;
+    setSubmitting(true);
+    setFormError("");
+    try {
+      await onDeleteUser(user.id);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "删除用户失败");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleMenuAction = (tab: "models" | "permissions", user: User) => {
@@ -93,7 +114,8 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
         </button>
       </header>
 
-      {/* Create user form */}
+      {formError ? <p className="errorText">{formError}</p> : null}
+
       {showCreate && (
         <section className="form-card">
           <h3>新建用户</h3>
@@ -122,11 +144,12 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
               <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="可选" />
             </div>
           </div>
-          <button onClick={handleCreate} className="primary-btn">创建</button>
+          <button onClick={handleCreate} className="primary-btn" disabled={submitting}>
+            创建
+          </button>
         </section>
       )}
 
-      {/* User list */}
       <section>
         <div className="tableWrap">
           <table>
@@ -135,8 +158,7 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
                 <th>用户名</th>
                 <th>角色</th>
                 <th>邮箱</th>
-                <th>备注</th>
-                <th>创建时间</th>
+                <th>状态</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -147,17 +169,11 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
                   <td>
                     <span className={`role-badge ${u.role}`}>{u.role}</span>
                   </td>
-                  <td>{u.email}</td>
-                  <td style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.notes}>
-                    {u.notes || "-"}
-                  </td>
-                  <td>{u.createdAt}</td>
+                  <td>{u.email || "-"}</td>
+                  <td>{u.status || "active"}</td>
                   <td>
                     <div className="rowActions" style={{ position: "relative" }}>
-                      <button
-                        className="link-btn"
-                        onClick={() => setResetTarget(u)}
-                      >
+                      <button className="link-btn" onClick={() => setResetTarget(u)}>
                         重置密码
                       </button>
                       <button
@@ -176,20 +192,10 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
                         ···
                       </button>
                       {menuOpen === u.id && (
-                        <div
-                          className="contextMenu"
-                          ref={menuRef}
-                          style={{ top: menuPos.top, left: menuPos.left }}
-                        >
-                          <button onClick={() => handleEdit(u)}>
-                            ✏️ 编辑用户
-                          </button>
-                          <button onClick={() => handleMenuAction("models", u)}>
-                            🔗 配置模型
-                          </button>
-                          <button onClick={() => handleMenuAction("permissions", u)}>
-                            🔑 配置权限
-                          </button>
+                        <div className="contextMenu" ref={menuRef} style={{ top: menuPos.top, left: menuPos.left }}>
+                          <button onClick={() => handleMenuAction("models", u)}>配置模型</button>
+                          <button onClick={() => handleMenuAction("permissions", u)}>配置权限</button>
+                          <button onClick={() => handleDelete(u)}>删除用户</button>
                         </div>
                       )}
                     </div>
@@ -198,14 +204,14 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
               ))}
             </tbody>
           </table>
+          {users.length === 0 ? <EmptyState title="暂无用户" /> : null}
         </div>
       </section>
 
-      {/* Reset password drawer */}
       {resetTarget && (
         <div className="drawer-overlay" onClick={() => setResetTarget(null)}>
           <div className="drawer" onClick={(e) => e.stopPropagation()}>
-            <h3>重置密码 — {resetTarget.username}</h3>
+            <h3>重置密码 - {resetTarget.username}</h3>
             <div className="form-group">
               <label>新密码</label>
               <input
@@ -217,60 +223,9 @@ export default function UserManagement({ onNavigateToTab }: UserManagementProps)
             </div>
             <div className="drawer-actions">
               <button onClick={() => setResetTarget(null)}>取消</button>
-              <button onClick={handleReset} className="primary-btn">确认</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit user drawer */}
-      {editTarget && (
-        <div className="drawer-overlay" onClick={() => setEditTarget(null)}>
-          <div className="drawer" onClick={(e) => e.stopPropagation()}>
-            <h3>编辑用户 — {editTarget.username}</h3>
-            <div className="form-group">
-              <label>用户名</label>
-              <input
-                value={editForm.username}
-                onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>角色</label>
-              <select
-                value={editForm.role}
-                onChange={(e) => setEditForm({ ...editForm, role: e.target.value as "admin" | "operator" })}
-              >
-                <option value="operator">Operator</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>显示名称</label>
-              <input
-                value={editForm.displayName}
-                onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>邮箱</label>
-              <input
-                value={editForm.email}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>备注</label>
-              <textarea
-                value={editForm.notes}
-                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                placeholder="备注信息"
-                rows={3}
-              />
-            </div>
-            <div className="drawer-actions">
-              <button onClick={() => setEditTarget(null)}>取消</button>
-              <button onClick={handleSaveEdit} className="primary-btn">保存</button>
+              <button onClick={handleReset} className="primary-btn" disabled={submitting}>
+                确认
+              </button>
             </div>
           </div>
         </div>

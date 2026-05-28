@@ -92,7 +92,7 @@ python remote_exec.py download /tmp/remote.log ./local.log
 ```python
 from remote_exec import RemoteExecutor
 
-executor = RemoteExecutor(host="120.55.84.39", user="root", password="zhao0626.")
+executor = RemoteExecutor(host="120.55.84.39", user="root", password="xxxx")
 
 # 执行命令，实时输出
 result = executor.exec("ls /tmp")

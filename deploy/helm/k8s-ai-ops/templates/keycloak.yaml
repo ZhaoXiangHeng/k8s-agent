@@ -17,7 +17,11 @@ spec:
       containers:
         - name: keycloak
           image: {{ .Values.keycloak.image }}
-          args: ["start-dev"]
+          args:
+            - "start-dev"
+            - "--import-realm"
+            - "--http-relative-path=/auth"
+            - "--proxy-headers=xforwarded"
           ports:
             - containerPort: 8080
           env:
@@ -28,6 +32,18 @@ spec:
                 secretKeyRef:
                   name: k8s-ai-secrets
                   key: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_HOSTNAME_URL
+              value: "http://keycloak.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.keycloak.service.port }}/auth"
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+          volumeMounts:
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+      volumes:
+        - name: realm-import
+          configMap:
+            name: keycloak-realm-import
 ---
 apiVersion: v1
 kind: Service

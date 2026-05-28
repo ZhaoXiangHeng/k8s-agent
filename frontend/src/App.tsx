@@ -11,7 +11,6 @@ import { OperatorModelsPage } from "./pages/OperatorModelsPage";
 import AdminConsole from "./pages/AdminConsole";
 import { AdminLlmConfigPage } from "./pages/AdminLlmConfigPage";
 import { AdminAuditPage } from "./pages/AdminAuditPage";
-import type { User } from "./store/auth";
 
 export default function App() {
   const authState = useAuth();
@@ -25,11 +24,26 @@ export default function App() {
     if (page === "operator-chat")
       return <OperatorChatPage auth={authState.auth} models={operator.models} />;
     if (page === "operator-permissions")
-      return <OperatorPermissionsPage permissions={operator.permissions} loading={operator.loading} error={operator.error} />;
+      return <OperatorPermissionsPage permissions={operator.permissions} loading={operator.loading} error={operator.error} role={authState.user?.role ?? "operator"} />;
     if (page === "operator-models")
       return <OperatorModelsPage models={operator.models} loading={operator.loading} error={operator.error} />;
     if (page === "admin-users-permissions")
-      return <AdminConsole />;
+      return (
+        <AdminConsole
+          users={admin.users}
+          models={admin.models}
+          providers={admin.providers}
+          permissionsByUserId={admin.permissionsByUserId}
+          modelBindingsByUserId={admin.modelBindingsByUserId}
+          loading={admin.loading}
+          error={admin.error}
+          onCreateUser={admin.createUser}
+          onDeleteUser={admin.deleteUser}
+          onResetPassword={admin.resetPassword}
+          onUpdatePermissions={admin.updatePermissions}
+          onUpdateModelBindings={admin.updateModelBindings}
+        />
+      );
     if (page === "admin-llm")
       return (
         <AdminLlmConfigPage
@@ -51,10 +65,7 @@ export default function App() {
   if (!authState.user)
     return (
       <LoginPage
-        onLogin={(user: User) => {
-          // Bridge main's User type to worktree's useAuth login
-          authState.login(user.username, user.password);
-        }}
+        onLogin={(username, password) => authState.login(username, password)}
       />
     );
 

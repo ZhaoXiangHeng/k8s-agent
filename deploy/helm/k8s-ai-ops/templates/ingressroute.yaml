@@ -10,6 +10,13 @@ spec:
   entryPoints:
     - web
   routes:
+    # OIDC callback: must reach frontend, not Keycloak — highest priority
+    - kind: Rule
+      match: Path(`/auth/callback`)
+      priority: 300
+      services:
+        - name: frontend
+          port: {{ .Values.frontend.service.port }}
     - kind: Rule
       match: PathPrefix(`/`)
       priority: 1

@@ -86,6 +86,36 @@ func TestCreateUserAuditFailureUsesRequestID(t *testing.T) {
 	}
 }
 
+func TestGetUserPermissionsReturnsPersistedPermissions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repos := newHTTPFakeRepositories()
+	repos.permissions.permissions = map[string][]domain.Permission{
+		"user-operator": {{
+			ID: "perm-1", UserID: "user-operator", Namespace: "dev",
+			APIGroup: "apps", Resource: "deployments", Verbs: []string{"get", "list"}, Enabled: true,
+		}},
+	}
+	server := NewServer(app.NewServices(repos.domainRepositories(), staticCipher{}, nil))
+	router := gin.New()
+	router.GET("/api/admin/users/:userId/permissions", server.getUserPermissions)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/admin/users/user-operator/permissions", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload []app.PermissionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload) != 1 || payload[0].Namespace != "dev" || payload[0].Resource != "deployments" {
+		t.Fatalf("unexpected permissions response: %#v", payload)
+	}
+}
+
 type httpFakeRepositories struct {
 	users        httpFakeUserRepo
 	permissions  httpFakePermissionRepo
@@ -135,12 +165,18 @@ func (r *httpFakeUserRepo) Save(_ context.Context, user *domain.User) error {
 	return nil
 }
 
-type httpFakePermissionRepo struct{}
-
-func (r *httpFakePermissionRepo) FindByUser(context.Context, string) ([]domain.Permission, error) {
-	return nil, nil
+type httpFakePermissionRepo struct {
+	permissions map[string][]domain.Permission
 }
-func (r *httpFakePermissionRepo) Replace(context.Context, string, []domain.Permission) error {
+
+func (r *httpFakePermissionRepo) FindByUser(_ context.Context, userID string) ([]domain.Permission, error) {
+	return r.permissions[userID], nil
+}
+func (r *httpFakePermissionRepo) Replace(_ context.Context, userID string, permissions []domain.Permission) error {
+	if r.permissions == nil {
+		r.permissions = map[string][]domain.Permission{}
+	}
+	r.permissions[userID] = permissions
 	return nil
 }
 

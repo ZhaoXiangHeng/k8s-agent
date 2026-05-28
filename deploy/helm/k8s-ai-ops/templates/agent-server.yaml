@@ -13,17 +13,6 @@ spec:
       labels:
         app: agent-server
     spec:
-      initContainers:
-        - name: wait-mcp-server
-          image: busybox:1.36
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z mcp-server {{ .Values.mcpServer.service.port }}; do
-                echo "waiting for mcp-server..."
-                sleep 2
-              done
       containers:
         - name: agent-server
           image: {{ include "k8s-ai-ops.image" (list . .Values.agentServer.image.repository) }}

@@ -4,9 +4,9 @@
 
 引入 Agent Server 后，权限边界分为三层：
 
-- Backend API：读取当前用户真实业务权限，并决定哪些历史消息可以进入 `context_messages`。
-- Agent Server：只消费 Backend 传入的上下文和权限快照，不保存权限，只能使用内置 MCP Server 暴露的工具。
-- MCP Server：每次工具执行前再次校验 namespace、apiGroup、resource、verb，并使用当前用户绑定的 ServiceAccount 访问 Kubernetes。
+- **Backend API**：读取当前用户真实业务权限，并决定哪些历史消息可以进入 `context_messages`
+- **Agent Server**：只消费 Backend 传入的上下文和权限快照，不保存权限，只能使用内置 MCP Server 暴露的工具
+- **MCP Server**：每次工具执行前再次校验 namespace、apiGroup、resource、verb，并使用当前用户绑定的 ServiceAccount 访问 Kubernetes
 
 `context_messages` 只用于多轮指代理解，不是授权凭证。
 
@@ -29,8 +29,8 @@ flowchart TD
 
 Keycloak 只维护平台角色：
 
-- `admin`：访问管理后台，管理用户、权限、LLM、审计。
-- `operator`：访问操作员 Chat 页面。
+- `admin`：访问管理后台，管理用户、权限、LLM、审计
+- `operator`：访问操作员 Chat 页面
 
 Kubernetes 资源权限不放入 Keycloak claims，避免 claims 过大、难以动态更新、难以和 Kubernetes RBAC 保持一致。
 
@@ -66,11 +66,7 @@ flowchart LR
   Binding --> Namespace["目标 namespace"]
 ```
 
-当前代码已实现 `backend/internal/infra/k8s.RBACManager`，它通过 `client-go` 创建或更新以下对象：
-
-- ServiceAccount
-- Role
-- RoleBinding
+当前代码已实现 `backend/internal/infra/k8s.RBACManager`，它通过 `client-go` 创建或更新 ServiceAccount、Role、RoleBinding。
 
 RBAC Manager 会给对象增加托管标签：
 
@@ -101,28 +97,8 @@ flowchart TD
 
 只依赖 Kubernetes RBAC 虽然安全，但用户体验和审计不够好：
 
-- LLM 可能生成越权参数，直接让 Kubernetes 报错会让用户难以理解。
-- MCP Server 可以在工具结果中给出清晰提示，例如“你只能访问 dev/test”。
-- 业务侧可以通过 Agent Server 返回的工具事件记录越权意图和拒绝原因。
+- LLM 可能生成越权参数，直接让 Kubernetes 报错会让用户难以理解
+- MCP Server 可以在工具结果中给出清晰提示，例如"你只能访问 dev/test"
+- 业务侧可以通过 Agent Server 返回的工具事件记录越权意图和拒绝原因
 
-因此系统必须同时使用：
-
-- prompt 中限制能力范围；
-- MCP Server 工具执行前校验；
-- Kubernetes RBAC 最终兜底。
-
-## 当前实现状态
-
-当前已实现三层权限边界中的核心部分：
-
-- **backend**：K8s RBAC Manager 已实现，通过 `client-go` 动态创建/更新 ServiceAccount、Role、RoleBinding，并附带托管标签（`app.kubernetes.io/managed-by=k8s-ai-ops-backend`）。权限更新接口在 `K8S_RBAC_SYNC_ENABLED=true` 时自动按 namespace 分组同步到 Kubernetes，同步失败时返回 `K8S_RBAC_APPLY_FAILED` 错误。
-- **backend**：操作员模型列表按用户 LLM 绑定过滤；Chat 消息处理会校验会话归属和模型绑定，拒绝跨用户会话或未绑定模型。
-- **mcp-server**：每次工具调用前通过 IdentityService gRPC 获取操作员对应的 ServiceAccount，构建 per-user K8s client，确保 Kubernetes RBAC 在 API 层面隔离。
-- **agent-server**：只消费 Backend 传入的权限上下文，使用内置 MCP 工具，不保存任何权限数据。
-- **proto**：`identity/v1/identity.proto` 已定义 `GetServiceAccount` RPC，Agent Server 和 MCP Server 均通过该接口获取用户身份映射。
-
-尚未实现：
-
-- Keycloak JWT audience 校验
-- Keycloak Admin API 集成（用户创建/禁用未同步到 Keycloak）
-- Redis 缓存的 JWKS 公钥获取
+因此系统必须同时使用：prompt 中限制能力范围 + MCP Server 工具执行前校验 + Kubernetes RBAC 最终兜底。

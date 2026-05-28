@@ -1,0 +1,87 @@
+{{- if .Values.keycloak.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-import
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: keycloak
+data:
+  {{ .Values.keycloak.realm }}.json: |
+    {
+      "realm": {{ .Values.keycloak.realm | quote }},
+      "enabled": true,
+      "displayName": "K8s AI Ops",
+      "sslRequired": "none",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": true,
+      "editUsernameAllowed": true,
+      "bruteForceProtected": true,
+      "accessTokenLifespan": 3600,
+      "ssoSessionIdleTimeout": 86400,
+      "ssoSessionMaxLifespan": 604800,
+      "clients": [
+        {
+          "clientId": {{ .Values.keycloak.clientId | quote }},
+          "name": "K8s AI Ops Frontend",
+          "description": "SPA client for k8s-ai-ops frontend (PKCE OIDC)",
+          "enabled": true,
+          "publicClient": true,
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": false,
+          "redirectUris": [
+            "http://localhost:5173/auth/callback",
+            "http://localhost:80/auth/callback",
+            "http://127.0.0.1:80/auth/callback",
+            "http://*"
+          ],
+          "webOrigins": [
+            "http://localhost:5173",
+            "http://localhost:80",
+            "http://127.0.0.1:80",
+            "+"
+          ],
+          "attributes": {
+            "post.logout.redirect.uris": "+"
+          }
+        }
+      ],
+      "defaultRole": {
+        "name": "operator",
+        "description": "Default role for authenticated users"
+      },
+      "roles": {
+        "realm": [
+          {
+            "name": "admin",
+            "description": "Platform administrator"
+          },
+          {
+            "name": "operator",
+            "description": "Namespace-level operator"
+          }
+        ]
+      },
+      "users": [
+        {
+          "username": "admin",
+          "enabled": true,
+          "email": "admin@k8s-ai.local",
+          "firstName": "Admin",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "admin",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["admin", "operator"]
+        }
+      ]
+    }
+{{- end }}

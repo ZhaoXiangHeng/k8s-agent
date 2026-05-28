@@ -16,32 +16,40 @@ var log = logrus.WithField("component", "mcp-server/identity")
 
 // Client 是 Identity Service 的 gRPC 客户端。
 type Client struct {
-	grpc identityv1.IdentityServiceClient
+	addr string
 }
 
-// NewClient 创建与 Identity Service 的 gRPC 连接，10 秒超时。
-// 使用 insecure 传输（集群内部通信，依赖 CNI 网络策略保障安全）。
+// NewClient 创建 Identity Service 客户端配置，不在启动阶段连接 Backend。
 func NewClient(ctx context.Context, addr string) (*Client, error) {
-	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	conn, err := grpc.DialContext(dialCtx, addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-	)
-	if err != nil {
-		log.WithError(err).WithFields(logrus.Fields{
-			"operation": "NewClient",
-			"addr":      addr,
-		}).Error("failed to dial identity service")
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
 	}
-	return &Client{grpc: identityv1.NewIdentityServiceClient(conn)}, nil
+	return &Client{addr: addr}, nil
 }
 
 // GetServiceAccount 根据用户 ID 查询对应的 K8s ServiceAccount 信息，
 // 返回 Token、API Server 地址、默认 Namespace 和 CA 证书。
 func (c *Client) GetServiceAccount(ctx context.Context, userID string) (*identityv1.GetServiceAccountResponse, error) {
-	resp, err := c.grpc.GetServiceAccount(ctx, &identityv1.GetServiceAccountRequest{
+	// 对 Backend 使用短连接，避免 mcp-server 启动时被服务依赖环阻塞。
+	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(dialCtx, c.addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	if err != nil {
+		log.WithError(err).WithFields(logrus.Fields{
+			"operation": "GetServiceAccount",
+			"user_id":   userID,
+			"addr":      c.addr,
+		}).Error("failed to dial identity service")
+		return nil, err
+	}
+	defer conn.Close()
+
+	resp, err := identityv1.NewIdentityServiceClient(conn).GetServiceAccount(ctx, &identityv1.GetServiceAccountRequest{
 		UserId: userID,
 	})
 	if err != nil {

@@ -7,12 +7,25 @@ import { StatusBadge } from "../components/StatusBadge";
 export function OperatorPermissionsPage({
   permissions,
   loading,
-  error
+  error,
+  role
 }: {
   permissions: Permission[];
   loading: boolean;
   error: string;
+  role: string;
 }) {
+  if (role === "admin") {
+    return (
+      <div className="workspace">
+        <header className="toolbar"><h2>我的权限</h2></header>
+        <Notice type="info">
+          集群管理员 — 您拥有对所有 Kubernetes 资源的完全访问权限，无需单独分配 namespace 级别权限。
+        </Notice>
+      </div>
+    );
+  }
+
   return (
     <div className="workspace">
       <header className="toolbar"><h2>我的权限</h2></header>

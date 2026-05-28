@@ -56,29 +56,42 @@ func NewGRPCClient(client agentv1.AgentServiceClient) *GRPCClient {
 	return &GRPCClient{client: client}
 }
 
-// Dial 创建到 Agent Server 的 gRPC 连接。
+// Dial 创建到 Agent Server 的 gRPC 连接，带指数退避重试。
 // 使用 insecure 传输（集群内部通信，依赖 CNI 网络策略保障安全）。
-// 连接超时为 10 秒。
+// 每次连接尝试超时 10 秒，失败后以 1s → 2s → 4s → ... → 30s 退避重试。
 func Dial(ctx context.Context, addr string) (*grpc.ClientConn, error) {
-	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	pkgLog.WithFields(logrus.Fields{
-		"event": "agent_dial_start",
-		"addr":  addr,
-	}).Info("connecting to agent server")
-	conn, err := grpc.DialContext(dialCtx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-	if err != nil {
-		pkgLog.WithError(err).WithFields(logrus.Fields{
-			"event": "agent_dial_failed",
+	backoff := 1 * time.Second
+	const maxBackoff = 30 * time.Second
+	for {
+		dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		pkgLog.WithFields(logrus.Fields{
+			"event": "agent_dial_start",
 			"addr":  addr,
-		}).Error("failed to connect to agent server")
-		return nil, err
+		}).Info("connecting to agent server")
+		conn, err := grpc.DialContext(dialCtx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+		cancel()
+		if err == nil {
+			pkgLog.WithFields(logrus.Fields{
+				"event": "agent_dial_success",
+				"addr":  addr,
+			}).Info("connected to agent server")
+			return conn, nil
+		}
+		pkgLog.WithError(err).WithFields(logrus.Fields{
+			"event":   "agent_dial_retry",
+			"addr":    addr,
+			"backoff": backoff.String(),
+		}).Warn("failed to connect to agent server, retrying...")
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
 	}
-	pkgLog.WithFields(logrus.Fields{
-		"event": "agent_dial_success",
-		"addr":  addr,
-	}).Info("connected to agent server")
-	return conn, nil
 }
 
 // RunStream 向 Agent Server 发送 RunStream 请求，返回事件流读取器。

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Core Agent Image Push"
-  short_description: "基于 Anybackup\\Agent\\service\\core_agent 构建核心智能体服务镜像并推送到 124.174.9.249 后用 ctr 导入。"
-  default_prompt: "Use this skill to build the core-agent-service image from D:\\code\\v9_work\\Anybackup\\Agent\\service\\core_agent in WSL, transfer it to 124.174.9.249, remove any existing image, and import it with ctr."

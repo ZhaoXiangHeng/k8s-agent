@@ -348,14 +348,14 @@ git commit -m "fix(chart): add initContainers, health checks, fix service ports 
 - [ ] **Step 1: 更新 backend/Dockerfile**
 
 ```dockerfile
-FROM golang:1.26-alpine AS build
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26-alpine AS build
 ARG LDFLAGS=""
 WORKDIR /src
 COPY go.mod ./
 COPY . .
 RUN go test ./... && go build -ldflags="${LDFLAGS}" -o /out/backend-api ./cmd/api
 
-FROM alpine:3.20
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/gcr.io/iguazio/alpine:3.20
 WORKDIR /app
 COPY --from=build /out/backend-api /app/backend-api
 EXPOSE 8080 8082
@@ -365,7 +365,7 @@ ENTRYPOINT ["/app/backend-api"]
 - [ ] **Step 2: 更新 agent-server/Dockerfile**
 
 ```dockerfile
-FROM golang:1.26-alpine AS build
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26-alpine AS build
 ARG LDFLAGS=""
 WORKDIR /src
 COPY proto /src/proto
@@ -373,7 +373,7 @@ COPY agent-server /src/agent-server
 WORKDIR /src/agent-server
 RUN go build -ldflags="${LDFLAGS}" -o /out/agent-server ./cmd/server
 
-FROM alpine:3.20
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/gcr.io/iguazio/alpine:3.20
 COPY --from=build /out/agent-server /usr/local/bin/agent-server
 EXPOSE 8082
 ENTRYPOINT ["/usr/local/bin/agent-server"]
@@ -382,14 +382,14 @@ ENTRYPOINT ["/usr/local/bin/agent-server"]
 - [ ] **Step 3: 更新 mcp-server/Dockerfile**
 
 ```dockerfile
-FROM golang:1.26-alpine AS build
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/golang:1.26-alpine AS build
 ARG LDFLAGS=""
 WORKDIR /src
 COPY go.mod ./
 COPY . .
 RUN go test ./... && go build -ldflags="${LDFLAGS}" -o /out/mcp-server ./cmd/server
 
-FROM alpine:3.20
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/gcr.io/iguazio/alpine:3.20
 WORKDIR /app
 COPY --from=build /out/mcp-server /app/mcp-server
 EXPOSE 8081

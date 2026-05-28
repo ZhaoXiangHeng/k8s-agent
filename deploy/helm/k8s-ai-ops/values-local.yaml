@@ -3,6 +3,10 @@ images:
   tag: local
   pullPolicy: IfNotPresent
 
+frontend:
+  image:
+    repository: k8s-ai-mcp-frontend
+
 ingress:
   enabled: false
 

@@ -20,19 +20,20 @@ import type { ApiAuth } from "../infrastructure/api/client";
 import { getCurrentUser } from "../infrastructure/api/userApi";
 
 export function useAuth() {
+  const [session, setSession] = useState(readSession());
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(appConfig.authMode === "keycloak" && !!readSession());
+  const [loading, setLoading] = useState(appConfig.authMode === "keycloak" && !!session);
   const [error, setError] = useState("");
   const [devLoginRequested, setDevLoginRequested] = useState(false);
   const [devCredentials, setDevCredentials] = useState({ username: appConfig.demoUser, password: "" });
 
   const auth: ApiAuth = useMemo(() => {
     if (appConfig.authMode === "keycloak") {
-      return { mode: "keycloak", accessToken: readSession()?.accessToken ?? "" };
+      return { mode: "keycloak", accessToken: session?.accessToken ?? "" };
     }
     const matchedUser = mockUsers.find((item) => item.username === devCredentials.username);
     return { mode: "dev", demoUser: devCredentials.username || appConfig.demoUser, demoRole: matchedUser?.role ?? appConfig.demoRole };
-  }, [devCredentials.username]);
+  }, [devCredentials.username, session?.accessToken]);
 
   const loadMe = useCallback(async () => {
     setLoading(true);
@@ -61,12 +62,12 @@ export function useAuth() {
       setLoading(false);
       return;
     }
-    if (!readSession()) {
+    if (!session) {
       setLoading(false);
       return;
     }
     void loadMe();
-  }, [loadMe]);
+  }, [loadMe, session]);
 
   const login = useCallback(async (username?: string, password?: string) => {
     if (appConfig.authMode === "dev") {
@@ -105,12 +106,15 @@ export function useAuth() {
     verifyCallbackState(params.get("state"), pkce.state);
     const session = await exchangeCodeForToken(appConfig, code, pkce.verifier);
     saveSession(session);
+    setSession(session);
     clearPkce();
-    await loadMe();
+    const current = await getCurrentUser({ mode: "keycloak", accessToken: session.accessToken });
+    setUser(current);
   }, [loadMe]);
 
   const logout = useCallback(() => {
     clearSession();
+    setSession(null);
     setUser(null);
     setDevLoginRequested(false);
     if (appConfig.authMode === "keycloak") {

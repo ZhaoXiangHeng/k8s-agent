@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { login } from "../store/auth";
-import type { User } from "../store/auth";
+import { appConfig } from "../config";
 
 interface LoginPageProps {
-  onLogin: (user: User) => void;
+  onLogin: (username?: string, password?: string) => void;
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
@@ -11,16 +10,33 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    const { login } = await import("../store/auth");
     const user = login(username, password);
     if (user) {
-      onLogin(user);
+      onLogin(user.username, user.password);
     } else {
       setError("用户名或密码错误");
     }
   };
+
+  if (appConfig.authMode === "keycloak") {
+    return (
+      <div className="login-page">
+        <div className="login-form">
+          <div className="login-header">
+            <h2>K8S AI Ops</h2>
+            <p className="eyebrow">AI 运维控制台</p>
+          </div>
+          <button type="button" className="login-btn" onClick={() => onLogin()}>
+            使用 Keycloak 登录
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">

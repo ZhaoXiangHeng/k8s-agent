@@ -18,6 +18,8 @@ type Config struct {
 	CacheDriver        string // 缓存驱动："none"（默认）或 "redis"
 	K8SRBACSyncEnabled bool   // 权限变更时是否同步 K8s RBAC 资源
 	Kubeconfig         string // Kubeconfig 文件路径（空则使用 InClusterConfig）
+	AdminSAName        string // 管理员共享 SA 名称（默认 k8s-ai-admin）
+	AdminSANamespace   string // 管理员共享 SA 所在 namespace
 }
 
 // Load 从环境变量加载 Config，未设置的变量使用默认值。
@@ -32,6 +34,8 @@ func Load() Config {
 		CacheDriver:        env("CACHE_DRIVER", "none"),
 		K8SRBACSyncEnabled: envBool("K8S_RBAC_SYNC_ENABLED", false),
 		Kubeconfig:         env("KUBECONFIG", ""),
+		AdminSAName:        env("ADMIN_SA_NAME", "k8s-ai-admin"),
+		AdminSANamespace:   env("ADMIN_SA_NAMESPACE", "k8s-ai-system"),
 	}
 }
 

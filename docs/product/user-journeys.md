@@ -45,24 +45,29 @@ flowchart TD
 ```mermaid
 sequenceDiagram
   actor Operator as 操作员
+  participant Traefik as Traefik Gateway
   participant UI as Frontend
   participant API as Backend API
   participant Agent as Agent Server
   participant MCP as MCP Server
 
+  Operator->>Traefik: 访问前端页面
+  Traefik->>UI: 路由到 Frontend
   Operator->>UI: 输入多轮 Chat 问题
-  UI->>API: POST /api/operator/chat/sessions/:id/messages
+  UI->>Traefik: POST /api/operator/chat/sessions/:id/messages
+  Traefik->>API: 路由到 Backend API
   API->>API: 读取历史、权限和最近资源引用
   API->>Agent: gRPC AgentService.RunStream(context_messages, current_input, permissions)
   Agent->>MCP: 调用内置 MCP 工具
   Agent-->>API: 返回总结、资源结果和工具事件
   API->>API: 保存消息和审计
-  API-->>UI: 返回总结和结构化资源
+  API-->>Traefik: SSE 流式事件
+  Traefik-->>UI: SSE 流式事件
 ```
 
-当操作员追问“看看这个 Pod 的日志”时，Backend 通过裁剪后的 `context_messages` 保留必要对话上下文，Agent Server 用它理解本轮 `current_input`，但实际 `get_pod_logs` 仍必须通过 MCP Server 权限校验。
+## Chat 巡检详细流程
 
-以下是 Chat 巡检的详细流程，Backend 通过 gRPC RunStream 委托 Agent Server 执行 ReAct agent loop，不直接调用 LLM 或 MCP Server：
+Backend 通过 gRPC RunStream 委托 Agent Server 执行 ReAct agent loop：
 
 ```mermaid
 sequenceDiagram
@@ -82,7 +87,6 @@ sequenceDiagram
   API->>Agent: gRPC AgentService.RunStream (server-streaming)
   Agent->>LLM: Eino ReAct agent 发送受权限约束的 prompt
   LLM-->>Agent: 请求 list_pods 工具
-  Agent->>Agent: 校验 namespace/resource/verb
   Agent->>MCP: 调用 list_pods 工具
   MCP->>K8S: 使用操作员 ServiceAccount 查询 Pod
   K8S-->>MCP: 返回 Pod 列表

@@ -19,8 +19,17 @@ func NewPermissionService(repos *domain.Repositories, rbacApplier RBACApplier) *
 	return &PermissionService{repos: repos, rbacApplier: rbacApplier}
 }
 
+func (s *PermissionService) isAdmin(ctx context.Context, userID string) bool {
+	user, err := s.repos.Users.FindByID(ctx, userID)
+	return err == nil && user != nil && user.Role == domain.RoleAdmin
+}
+
 // Update 替换用户权限并同步 K8s RBAC。
+// admin 用户拥有集群管理员权限，不需要单独分配 namespace 级别权限。
 func (s *PermissionService) Update(ctx context.Context, userID string, req UpdatePermissionsRequest) ([]PermissionResponse, error) {
+	if s.isAdmin(ctx, userID) {
+		return nil, fmt.Errorf("admin users have cluster-admin access, no per-user permissions needed")
+	}
 	perms := make([]domain.Permission, 0, len(req.Permissions))
 	for _, item := range req.Permissions {
 		perms = append(perms, domain.Permission{

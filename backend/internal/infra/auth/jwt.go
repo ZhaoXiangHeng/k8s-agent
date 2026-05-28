@@ -179,7 +179,7 @@ func (v *JWTValidator) resolveJWT(r *http.Request, requestID string) (*UserConte
 		UserID:    extractString(claims, "sub"),
 		Username:  extractUsername(claims),
 		Email:     extractString(claims, "email"),
-		Role:      extractString(claims, "role"),
+		Role:      extractRole(claims),
 		RequestID: requestID,
 	}, nil
 }
@@ -189,6 +189,31 @@ func extractUsername(claims jwt.MapClaims) string {
 		return u
 	}
 	return extractString(claims, "sub")
+}
+
+func extractRole(claims jwt.MapClaims) string {
+	if role := extractString(claims, "role"); role != "" {
+		return role
+	}
+	realmAccess, ok := claims["realm_access"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	roles, ok := realmAccess["roles"].([]interface{})
+	if !ok {
+		return ""
+	}
+	for _, raw := range roles {
+		if role, ok := raw.(string); ok && role == "admin" {
+			return "admin"
+		}
+	}
+	for _, raw := range roles {
+		if role, ok := raw.(string); ok && role == "operator" {
+			return "operator"
+		}
+	}
+	return ""
 }
 
 // getPublicKey 获取 Keycloak JWKS 公钥（带双重检查锁缓存）。

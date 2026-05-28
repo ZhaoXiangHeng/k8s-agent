@@ -24,3 +24,13 @@ func (s *Server) updatePermissions(c *gin.Context) {
 	}
 	ok(c, result)
 }
+
+func (s *Server) getUserPermissions(c *gin.Context) {
+	userID := c.Param("userId")
+	result, err := s.Svc.Users.GetPermissions(c.Request.Context(), userID)
+	if err != nil {
+		failInternal(c, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	ok(c, result)
+}

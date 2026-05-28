@@ -1,6 +1,10 @@
 package http
 
-import "github.com/gin-gonic/gin"
+import (
+	"k8s-ai-ops/backend/internal/app"
+
+	"github.com/gin-gonic/gin"
+)
 
 func (s *Server) currentUser(c *gin.Context) {
 	uid, username, role := getUser(c)
@@ -8,7 +12,15 @@ func (s *Server) currentUser(c *gin.Context) {
 }
 
 func (s *Server) operatorPermissions(c *gin.Context) {
-	uid, _, _ := getUser(c)
+	uid, _, role := getUser(c)
+	// admin 拥有集群管理员权限，返回通配符
+	if role == "admin" {
+		ok(c, []app.PermissionResponse{{
+			Namespace: "*", APIGroup: "*", Resource: "*",
+			Verbs: []string{"*"}, Enabled: true,
+		}})
+		return
+	}
 	result, err := s.Svc.Users.GetPermissions(c.Request.Context(), uid)
 	if err != nil {
 		failInternal(c, "INTERNAL_ERROR", err.Error())

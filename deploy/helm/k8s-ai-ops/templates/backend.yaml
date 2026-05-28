@@ -65,6 +65,10 @@ spec:
               value: "postgres://{{ .Values.postgresql.username }}:{{ .Values.postgresql.password }}@postgresql:{{ .Values.postgresql.service.port }}/{{ .Values.postgresql.database }}?sslmode=disable"
             - name: REDIS_ADDR
               value: "redis:{{ .Values.redis.service.port }}"
+            - name: AUTH_MODE
+              value: {{ .Values.backend.authMode | quote }}
+            - name: KEYCLOAK_ISSUER
+              value: {{ .Values.backend.keycloakIssuer | quote }}
             - name: APP_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

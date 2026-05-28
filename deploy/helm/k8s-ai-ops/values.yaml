@@ -26,6 +26,11 @@ backend:
   storeDriver: postgres
   cacheDriver: redis
   rbacSyncEnabled: true
+  # 认证模式："dev"（开发，信任 X-Demo-User 头）、"jwt"（生产，验证 Keycloak JWT）、"none"（无认证）
+  authMode: jwt
+  # Keycloak OIDC Issuer URL，仅 authMode=jwt 时生效。
+  # 该值必须与浏览器登录后 Token 中的 iss 完全一致。
+  keycloakIssuer: "http://120.55.84.39/auth/realms/k8s-ai"
 
 agentServer:
   replicas: 1
@@ -36,6 +41,10 @@ agentServer:
 
 rbac:
   managedNamespaces: []
+  # 管理员 ServiceAccount — 部署时自动创建并绑定 cluster-admin
+  adminServiceAccount:
+    enabled: true
+    name: k8s-ai-admin
 
 mcpServer:
   replicas: 1
@@ -46,15 +55,17 @@ mcpServer:
 
 keycloak:
   enabled: true
-  image: quay.io/keycloak/keycloak:26.0
+  image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/quay.io/keycloak/keycloak:26.0.7
   adminUser: admin
   adminPassword: admin
+  realm: k8s-ai
+  clientId: k8s-ai-frontend
   service:
     port: 8080
 
 postgresql:
   enabled: true
-  image: postgres:16-alpine
+  image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/postgres:16-alpine
   database: k8s_ai
   username: k8s_ai
   password: k8s_ai
@@ -63,14 +74,14 @@ postgresql:
 
 redis:
   enabled: true
-  image: redis:7-alpine
+  image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/redis:7-alpine
   service:
     port: 6379
 
 # Traefik API Gateway — 统一入口，参照 anybackup-ai 部署架构
 traefik:
   enabled: true
-  image: traefik:v3.6.13
+  image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/traefik:v3.6.13
   # hostPort 将 Traefik web entrypoint(8000) 映射到宿主机端口
   # 外部通过 http://<node-ip>:<hostPort> 访问
   hostPort: 80

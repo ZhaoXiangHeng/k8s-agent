@@ -41,6 +41,16 @@ flowchart LR
 - 参考：[API 设计](docs/reference/api-design.md)、[配置参考](docs/reference/config-reference.md)、[术语表](docs/reference/glossary.md)
 - 安全审查：[安全设计](docs/security/security-design.md)
 
+## 根目录文档
+
+| 文档 | 说明 |
+|------|------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 核心架构图、设计原则、文档入口 |
+| [AGENTS.md](AGENTS.md) | 项目协作规则（DDD 分层、日志规范、文档一致性） |
+| [AI_PROMPTS.md](AI_PROMPTS.md) | AI 协同研发记录（提示词、AI 分工、Bug 修复、方法论） |
+| [问题记录.md](问题记录.md) | 24 个工程问题的详细记录（问题 → 根因 → 修复 → 验证） |
+| [交付清单.md](交付清单.md) | 面试交付索引（任务要求 vs 实际交付物对照） |
+
 ## 本地验证
 
 ```bash
@@ -130,4 +140,13 @@ scripts/helm-upgrade.sh --image-source registry --registry registry.example.com/
 
 ## 当前状态
 
-当前仓库包含企业级分层文档、Backend 骨架、Agent Server 骨架、MCP Server 骨架、Frontend 骨架、Helm Chart、Dockerfile 和部署脚本。Backend 已接入 PostgreSQL、Redis 连通性检查、namespace 级 Kubernetes RBAC 同步，并通过生成的 proto/gRPC 契约调用 Agent Server。后续开发应遵循 [项目协作规则](AGENTS.md)，保持代码和文档一致。
+当前仓库已完成面试任务的全部交付要求，并在多项上超出：
+
+- 8 个 MCP 工具（要求 3 个），per-user K8s client 隔离
+- React 管理控制台 + 操作员 Chat 界面，Keycloak PKCE 登录
+- Helm Chart 15 个模板，支持 Traefik 网关、内置 PostgreSQL/Redis/Keycloak
+- 三层权限防线（prompt 限制 + MCP 校验 + K8s RBAC 兜底）
+- 企业级分层文档体系（24 个文档文件）
+- AI 协同研发记录（19 条提示词原文 + 24 个问题记录）
+
+后续开发应遵循 [项目协作规则](AGENTS.md)，保持代码和文档一致。
